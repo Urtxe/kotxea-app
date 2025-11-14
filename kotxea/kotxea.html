@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kotxea</title>
+    <link rel="stylesheet" href="styles.css">
+    
+</head>
+<body>
+    <table id="miTabla">
+        <tr>
+            <th> </th>
+            <th>Nerea</th>
+            <th>Leire</th>
+            <th>Naroa</th>
+            <th>Gorka</th>
+        </tr>
+        <tr>
+            <td>Bidaiak</td>
+            <td id="bidaiak-nerea">0</td>
+            <td id="bidaiak-leire">0</td>
+            <td id="bidaiak-naroa">0</td>
+            <td id="bidaiak-gorka">0</td>
+        </tr>
+        <tr>
+            <td>Gidatu</td>
+            <td id="gidatu-nerea">0</td>
+            <td id="gidatu-leire">0</td>
+            <td id="gidatu-naroa">0</td>
+            <td id="gidatu-gorka">0</td>
+        </tr>
+        <tr>
+            <td>Emaitza</td>
+            <td id="emaitza-nerea">0</td>
+            <td id="emaitza-leire">0</td>
+            <td id="emaitza-naroa">0</td>
+            <td id="emaitza-gorka">0</td>
+        </tr>
+    </table>
+    <br><br>
+    
+    <form id="bidaiForm">
+        Bidai berria
+        <br>
+        <label for="nor">Nor da gidaria?</label>
+        <select name="nor" id="nor">
+            <option value="nerea">Nerea</option>
+            <option value="leire">Leire</option>
+            <option value="naroa">Naroa</option>
+            <option value="gorka">Gorka</option>
+        </select>
+        <br><br>
+        <label>Nortzuk joan dira?<br>
+        <input type="checkbox" name="bidaiariak" value="nerea" id="nerea">Nerea<br>
+        <input type="checkbox" name="bidaiariak" value="leire" id="leire">Leire<br>
+        <input type="checkbox" name="bidaiariak" value="naroa" id="naroa">Naroa<br>
+        <input type="checkbox" name="bidaiariak" value="gorka" id="gorka">Gorka<br>
+        <br>
+    </label>
+        <button type="submit">Bidai berria gehitu</button>
+    </form>
+    <br>
+    <button id="resetBtn">Reset</button>
+
+    <script src="script.js" ></script>
+</body>
+</html>
