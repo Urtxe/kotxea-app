@@ -42,7 +42,11 @@
     
     <form id="bidaiForm">
         Bidai berria
-        <br>
+        <br><br>
+        <label for="bidaiaData">Eguna:</label>
+        <input type="date" id="bidaiaData" name="bidaiaData" required>
+        <br><br>
+        
         <label for="nor">Nor da gidaria?</label>
         <select name="nor" id="nor">
             <option value="nerea">Nerea</option>
@@ -62,6 +66,32 @@
     </form>
     <br>
     <button id="resetBtn">Reset</button>
+
+    <br><br>
+    <hr>
+    <br>
+
+    <h3>Bidaia-Historiala</h3>
+    
+    <label for="historialEpea">Erakutsi:</label>
+    <select id="historialEpea">
+        <option value="30">Azken 30 egunak</option>
+        <option value="guztia">Historial osoa</option>
+    </select>
+    <br><br>
+    
+    <table id="historialaTaula" border="1" style="width:100%; border-collapse: collapse;">
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Gidaria</th>
+                <th>Bidaiariak</th>
+                <th>Ezabatu</th> </tr>
+        </thead>
+        <tbody id="historialaBody">
+            </tbody>
+    </table>
+
 
     <script src="script.js" ></script>
 </body>
