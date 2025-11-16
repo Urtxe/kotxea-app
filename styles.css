@@ -85,3 +85,11 @@ button:hover {
 #resetBtn:hover {
     background-color: var(--verde-laboral);
 }
+
+/* Historialaren taulako zelda guztiak zentratu */
+#historialaTaula th,
+#historialaTaula td {
+  text-align: center;
+  /* Botoiak bertikalki ere zentratzeko (aukerakoa) */
+  vertical-align: middle; 
+}
