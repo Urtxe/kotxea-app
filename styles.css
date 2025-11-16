@@ -93,3 +93,11 @@ button:hover {
   /* Botoiak bertikalki ere zentratzeko (aukerakoa) */
   vertical-align: middle; 
 }
+
+footer {
+        padding: 15px;
+        font-size: 0.8em;
+        text-align: center;
+    }
+
+
