@@ -8,40 +8,52 @@
     
 </head>
 <body>
+    
     <table id="miTabla">
-        <tr>
-            <th> </th>
-            <th>Nerea</th>
-            <th>Leire</th>
-            <th>Naroa</th>
-            <th>Gorka</th>
-        </tr>
-        <tr>
-            <td>Bidaiak</td>
-            <td id="bidaiak-nerea">0</td>
-            <td id="bidaiak-leire">0</td>
-            <td id="bidaiak-naroa">0</td>
-            <td id="bidaiak-gorka">0</td>
-        </tr>
-        <tr>
-            <td>Gidatu</td>
-            <td id="gidatu-nerea">0</td>
-            <td id="gidatu-leire">0</td>
-            <td id="gidatu-naroa">0</td>
-            <td id="gidatu-gorka">0</td>
-        </tr>
-        <tr>
-            <td>Emaitza</td>
-            <td id="emaitza-nerea">0</td>
-            <td id="emaitza-leire">0</td>
-            <td id="emaitza-naroa">0</td>
-            <td id="emaitza-gorka">0</td>
-        </tr>
+        <thead>
+            <tr>
+                <th>Pertsona</th>
+                <th>Emaitza (Balantzea)</th>
+                <th>Bidaiak (Guztira)</th>
+                <th>Kotxea Eraman</th>
+                <th>Kotxea Ez Eraman</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Nerea</td>
+                <td id="emaitza-nerea">0.00</td>
+                <td id="bidaiak-guztira-nerea">0</td>
+                <td id="gidatu-nerea">0</td>
+                <td id="passenger-nerea">0</td>
+            </tr>
+            <tr>
+                <td>Leire</td>
+                <td id="emaitza-leire">0.00</td>
+                <td id="bidaiak-guztira-leire">0</td>
+                <td id="gidatu-leire">0</td>
+                <td id="passenger-leire">0</td>
+            </tr>
+            <tr>
+                <td>Naroa</td>
+                <td id="emaitza-naroa">0.00</td>
+                <td id="bidaiak-guztira-naroa">0</td>
+                <td id="gidatu-naroa">0</td>
+                <td id="passenger-naroa">0</td>
+            </tr>
+            <tr>
+                <td>Gorka</td>
+                <td id="emaitza-gorka">0.00</td>
+                <td id="bidaiak-guztira-gorka">0</td>
+                <td id="gidatu-gorka">0</td>
+                <td id="passenger-gorka">0</td>
+            </tr>
+        </tbody>
     </table>
     <br><br>
     
     <form id="bidaiForm">
-        Bidai berria
+        <strong>BIDAI BERRIA</strong>
         <br><br>
         <label for="bidaiaData">Eguna:</label>
         <input type="date" id="bidaiaData" name="bidaiaData" required>

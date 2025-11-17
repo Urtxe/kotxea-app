@@ -1,49 +1,105 @@
 document.addEventListener("DOMContentLoaded", function() {
     
-    // --- LABURPEN-TAULAREN FUNTZIOAK ---
+    // Datuak gordetzeko objektu nagusia
+    let datuak = {};
+    const PERTSONAK = ['nerea', 'leire', 'naroa', 'gorka'];
 
-    function cargarDatos() {
-        let datos = localStorage.getItem('kotxeaDatos');
-        if (datos) {
-            datos = JSON.parse(datos);
-            ['nerea', 'leire', 'naroa', 'gorka'].forEach(function(pertsona) {
-                document.getElementById('bidaiak-' + pertsona).textContent = datos[pertsona].bidaiak.toFixed(2);
-                document.getElementById('gidatu-' + pertsona).textContent = datos[pertsona].gidatu.toFixed(2);
-                document.getElementById('emaitza-' + pertsona).textContent = datos[pertsona].emaitza.toFixed(2);
-            });
-        }
-    }
+    // --- DATU NAGUSIAK KUDEATZEKO FUNTZIOAK ---
 
-    function guardarDatos() {
-        let datos = {};
-        ['nerea', 'leire', 'naroa', 'gorka'].forEach(function(pertsona) {
-            datos[pertsona] = {
-                bidaiak: parseFloat(document.getElementById('bidaiak-' + pertsona).textContent),
-                gidatu: parseFloat(document.getElementById('gidatu-' + pertsona).textContent),
-                emaitza: parseFloat(document.getElementById('emaitza-' + pertsona).textContent)
+    // Datuen objektua hasieratzen du, dena 0-ra jarriz
+    function initDatuak() {
+        datuak = {};
+        PERTSONAK.forEach(function(p) {
+            datuak[p] = {
+                gidatu: 0,                // Kotxea Eraman (Zenbaki osoa)
+                bidaiak_guztira: 0,       // Bidaiak Guztira (Zenbaki osoa)
+                bidaiak_portzentaia: 0,   // Balantzea kalkulatzeko (Hamartarrak)
+                emaitza: 0                // Balantzea (Hamartarrak)
             };
         });
-        localStorage.setItem('kotxeaDatos', JSON.stringify(datos));
+    }
+
+    // Taula nagusia (DOM) eguneratzen du 'datuak' objektuan oinarrituta
+    function eguneratuTaulaNagusia() {
+        PERTSONAK.forEach(function(p) {
+            let passengerCount = datuak[p].bidaiak_guztira - datuak[p].gidatu;
+
+            // HAMARTARREN ZUZENKETA: .toFixed(2) bakarrik emaitzan.
+            // Besteak zenbaki osoak dira.
+// --- ALDAKETA: Emaitza hamartar gabe erakutsi, osoa bada ---
+            
+            // 1. Lehenik, biribildu 2 hamartarretara (float erroreak kentzeko, adib: 1.999... -> "2.00")
+            let emaitzaStr = datuak[p].emaitza.toFixed(2);
+            
+            // 2. Bihurtu berriro zenbaki (float) batera ("2.00" -> 2, "1.50" -> 1.5, "1.33" -> 1.33)
+            let emaitzaFloat = parseFloat(emaitzaStr);
+            
+            // 3. Ezarri testua. toString() automatikoki kudeatuko du: 
+            //    2 -> "2"
+            //    1.5 -> "1.5"
+            document.getElementById('emaitza-' + p).textContent = emaitzaFloat.toString();
+            // --------------------------------------------------------------------
+
+
+            document.getElementById('bidaiak-guztira-' + p).textContent = datuak[p].bidaiak_guztira;
+            document.getElementById('gidatu-' + p).textContent = datuak[p].gidatu;
+            document.getElementById('passenger-' + p).textContent = passengerCount;
+        });
+    }
+
+    // Datuak LocalStorage-tik kargatzen ditu 'datuak' objektura
+    function cargarDatos() {
+        let gordetakoDatuak = localStorage.getItem('kotxeaDatos');
+        if (gordetakoDatuak) {
+            datuak = JSON.parse(gordetakoDatuak);
+            // Ziurtatu datu zaharrek egitura berria dutela
+            let beharrezkoGakoak = ['gidatu', 'bidaiak_guztira', 'bidaiak_portzentaia', 'emaitza'];
+            let datuakOsatuta = false;
+            PERTSONAK.forEach(p => {
+                beharrezkoGakoak.forEach(key => {
+                    if (datuak[p][key] === undefined) {
+                        datuak[p][key] = 0; // Gakoa falta bada, gehitu
+                        datuakOsatuta = true;
+                    }
+                });
+            });
+            if (datuakOsatuta) {
+                console.warn("Datu-egitura eguneratu da. Datuak berridatzi egingo dira.");
+                guardarDatos(); // Gorde egitura zuzendua
+            }
+        } else {
+            initDatuak();
+        }
+        eguneratuTaulaNagusia();
+    }
+
+    // 'datuak' objektua LocalStorage-n gordetzen du
+    function guardarDatos() {
+        localStorage.setItem('kotxeaDatos', JSON.stringify(datuak));
+    }
+
+    // Pertsona guztien emaitza (balantzea) birkalkulatzen du
+    function birkalkulatuEmaitzak() {
+        PERTSONAK.forEach(function(p) {
+            // Hau da zure jatorrizko logika balantzea kalkulatzeko
+            datuak[p].emaitza = datuak[p].gidatu - datuak[p].bidaiak_portzentaia;
+        });
     }
 
     // --- HISTORIALAREN FUNTZIOAK ---
 
-    // (MODIFIKATUA: ID bakarra gehitzen dio bidaia bakoitzari)
     function guardarBidaiaHistorialean(data, gidaria, bidaiariak) {
         let historiala = JSON.parse(localStorage.getItem('kotxeaHistoriala')) || [];
-        
         let bidaiaBerria = {
-            id: new Date().getTime(), // ID bakarra sortzeko
+            id: new Date().getTime(),
             data: data, 
             gidaria: gidaria,
             bidaiariak: bidaiariak
         };
-        
         historiala.push(bidaiaBerria);
         localStorage.setItem('kotxeaHistoriala', JSON.stringify(historiala));
     }
 
-    // (MODIFIKATUA: Ezabatzeko botoia sortzen du)
     function kargatuHistoriala() {
         let historiala = JSON.parse(localStorage.getItem('kotxeaHistoriala')) || [];
         let taulaBody = document.getElementById('historialaBody');
@@ -56,7 +112,6 @@ document.addEventListener("DOMContentLoaded", function() {
             let mugaData = new Date();
             mugaData.setDate(mugaData.getDate() - 30);
             mugaData.setHours(0, 0, 0, 0);
-            
             historialaFiltratua = historiala.filter(function(bidaia) {
                 let bidaiaDataObj = new Date(bidaia.data + "T00:00:00"); 
                 return bidaiaDataObj >= mugaData;
@@ -69,43 +124,34 @@ document.addEventListener("DOMContentLoaded", function() {
             let dataCell = row.insertCell(0);
             let dataObj = new Date(bidaia.data + "T00:00:00"); 
             dataCell.textContent = dataObj.toLocaleString('es-ES', { 
-                year: 'numeric', 
-                month: '2-digit', 
-                day: '2-digit'
+                year: 'numeric', month: '2-digit', day: '2-digit'
             });
 
             let gidariaCell = row.insertCell(1);
             gidariaCell.textContent = bidaia.gidaria.charAt(0).toUpperCase() + bidaia.gidaria.slice(1);
 
             let bidaiariakCell = row.insertCell(2);
-            
-            // --- ALDAKETA HEMEN: Bidaiarien izenak maiuskulaz jarri ---
             let bidaiariakMayuscula = bidaia.bidaiariak.map(function(izena) {
                 return izena.charAt(0).toUpperCase() + izena.slice(1);
             });
             bidaiariakCell.textContent = bidaiariakMayuscula.join(', ');
-            // ---------------------------------------------------------
 
-            // --- Ezabatzeko botoia gehitu ---
             let ezabatuCell = row.insertCell(3);
             let ezabatuBtn = document.createElement('button');
             ezabatuBtn.textContent = 'Ezabatu';
-            ezabatuBtn.dataset.id = bidaia.id; // ID-a botoiari lotu
-            ezabatuBtn.addEventListener('click', ezabatuBidaia); // Listener-a gehitu
+            ezabatuBtn.dataset.id = bidaia.id;
+            ezabatuBtn.addEventListener('click', ezabatuBidaia);
             ezabatuCell.appendChild(ezabatuBtn);
-            // ------------------------------------------------
         });
     }
 
-    // --- FUNTZIO BERRIA: Bidaia bat ezabatzeko ---
     function ezabatuBidaia(event) {
-        let bidaiaId = Number(event.target.dataset.id); // Botoian gordetako ID-a lortu
+        let bidaiaId = Number(event.target.dataset.id);
 
         if (!confirm('Ziur zaude bidaia hau ezabatu nahi duzula? Ekintza honek emaitzak birkalkulatuko ditu.')) {
             return; 
         }
 
-        // 1. Historiala eta bidaia lortu
         let historiala = JSON.parse(localStorage.getItem('kotxeaHistoriala')) || [];
         let bidaiaEzabatzeko = historiala.find(b => b.id === bidaiaId);
 
@@ -114,35 +160,28 @@ document.addEventListener("DOMContentLoaded", function() {
             return;
         }
 
-        // 2. Kalkuluak desegin (DOM-ean zuzenean)
+        // 1. Kalkuluak desegin 'datuak' objektuan
         let gidaria = bidaiaEzabatzeko.gidaria;
         let bidaiariak = bidaiaEzabatzeko.bidaiariak;
         let porcentajePorPersona = 1 / bidaiariak.length;
 
-        // 2a. Gidariari 'gidatu' bat kendu
-        let gidatuCell = document.getElementById('gidatu-' + gidaria);
-        gidatuCell.textContent = (parseFloat(gidatuCell.textContent) - 1).toFixed(2);
+        // 1a. Gidariari 'gidatu' bat kendu
+        datuak[gidaria].gidatu -= 1;
 
-        // 2b. Bidaiari bakoitzari bere portzentaia kendu
+        // 1b. Bidaiari bakoitzari bere datuak kendu
         bidaiariak.forEach(function(bidaiaria) {
-            let bidaiakCell = document.getElementById('bidaiak-' + bidaiaria);
-            bidaiakCell.textContent = (parseFloat(bidaiakCell.textContent) - porcentajePorPersona).toFixed(2);
+            datuak[bidaiaria].bidaiak_guztira -= 1;
+            datuak[bidaiaria].bidaiak_portzentaia -= porcentajePorPersona;
         });
 
-        // 3. Emaitzak birkalkulatu (DOM-ean)
-        ['nerea', 'leire', 'naroa', 'gorka'].forEach(function(pertsona) {
-            let bidaiak = parseFloat(document.getElementById('bidaiak-' + pertsona).textContent);
-            let gidatu = parseFloat(document.getElementById('gidatu-' + pertsona).textContent);
-            
-            // --- ALDAKETA HEMEN: Kalkulua alderantziz ---
-            let emaitza = gidatu - bidaiak;
-            // ------------------------------------------
-            
-            document.getElementById('emaitza-' + pertsona).textContent = emaitza.toFixed(2);
-        });
+        // 2. Emaitzak birkalkulatu
+        birkalkulatuEmaitzak();
 
-        // 4. Laburpen eguneratua gorde (DOM-etik irakurriz)
+        // 3. Laburpen eguneratua gorde (LocalStorage)
         guardarDatos();
+
+        // 4. Taula nagusia berritu (DOM)
+        eguneratuTaulaNagusia();
 
         // 5. Bidaia historialetik kendu eta gorde
         let historialaBerria = historiala.filter(b => b.id !== bidaiaId);
@@ -155,24 +194,19 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // --- FUNTZIO LAGUNGARRIAK ---
 
-    // --- ALDAKETA HEMEN: Gidaria desgaituta uzteko ---
     function markatuHasierakoGidaria() {
-        // Lehenik, denak gaitu eta desmarkatu
         document.querySelectorAll('input[name="bidaiariak"]').forEach(function(checkbox) {
             checkbox.disabled = false;
-            // checkbox.checked = false; // Beharrezkoa bada, baina reset-ak egiten du
         });
-
         let hasierakoGidaria = document.getElementById('nor').value;
         if(hasierakoGidaria) {
             let checkbox = document.getElementById(hasierakoGidaria);
             if (checkbox) {
                 checkbox.checked = true;
-                checkbox.disabled = true; // Gidaria desgaituta utzi
+                checkbox.disabled = true;
             }
         }
     }
-    // ------------------------------------------------
 
     function dataHasieratu() {
         document.getElementById('bidaiaData').valueAsDate = new Date();
@@ -180,36 +214,29 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // --- ORRIA KARGATZEAN EGIN BEHARREKOAK ---
 
-    cargarDatos();
+    cargarDatos(); // Honek 'datuak' bete eta 'eguneratuTaulaNagusia' deitzen du
     kargatuHistoriala();
     markatuHasierakoGidaria(); 
     dataHasieratu();           
 
-
     // --- LISTENER-AK (EVENTOS) ---
 
-    // --- ALDAKETA HEMEN: Gidaria aldatzean desgaitzeko ---
     document.getElementById('nor').addEventListener('change', function() {
         let allCheckboxes = document.querySelectorAll('input[name="bidaiariak"]');
         allCheckboxes.forEach(function(checkbox) {
             checkbox.checked = false;
-            checkbox.disabled = false; // Gaitu guztiak lehenik
+            checkbox.disabled = false;
         });
-
         let gidariaId = this.value; 
         let checkboxGidaria = document.getElementById(gidariaId);
         if (checkboxGidaria) {
             checkboxGidaria.checked = true;
-            checkboxGidaria.disabled = true; // Desgaitu gidari berria
+            checkboxGidaria.disabled = true;
         }
     });
-    // ----------------------------------------------------
 
-    // Historialaren filtroa
     document.getElementById('historialEpea').addEventListener('change', kargatuHistoriala);
 
-
-    // Formularioa bidaltzekoa
     document.getElementById('bidaiForm').addEventListener('submit', function(e) {
         e.preventDefault();
 
@@ -227,61 +254,59 @@ document.addEventListener("DOMContentLoaded", function() {
             alert("Debes seleccionar al menos un pasajero");
             return;
         }
-        
         if (!bidaiaData) {
             alert("Bidaiaren eguna hautatu behar duzu");
             return;
         }
 
-        // --- Laburpena eguneratu ---
+        // --- 1. Datuak eguneratu 'datuak' objektuan ---
         let porcentajePorPersona = 1 / numBidaiariak;
 
-        let gidatuCell = document.getElementById('gidatu-' + gidaria);
-        gidatuCell.textContent = (parseFloat(gidatuCell.textContent) + 1).toFixed(2);
+        // Gidariaren datuak
+        datuak[gidaria].gidatu += 1;
 
+        // Bidaiari guztien datuak (gidaria barne)
         bidaiariak.forEach(function(bidaiaria) {
-            let bidaiakCell = document.getElementById('bidaiak-' + bidaiaria);
-            let valorActual = parseFloat(bidaiakCell.textContent);
-            bidaiakCell.textContent = (valorActual + porcentajePorPersona).toFixed(2);
+            datuak[bidaiaria].bidaiak_guztira += 1;
+            datuak[bidaiaria].bidaiak_portzentaia += porcentajePorPersona;
         });
 
-        ['nerea', 'leire', 'naroa', 'gorka'].forEach(function(pertsona) {
-            let bidaiak = parseFloat(document.getElementById('bidaiak-' + pertsona).textContent);
-            let gidatu = parseFloat(document.getElementById('gidatu-' + pertsona).textContent);
-            
-            // --- ALDAKETA HEMEN: Kalkulua alderantziz ---
-            let emaitza = gidatu - bidaiak;
-            // ------------------------------------------
+        // --- 2. Emaitzak birkalkulatu ---
+        birkalkulatuEmaitzak();
 
-            document.getElementById('emaitza-' + pertsona).textContent = emaitza.toFixed(2);
-        });
-
+        // --- 3. Datuak gorde (LocalStorage) ---
         guardarDatos(); 
 
-        // Historiala gorde
+        // --- 4. Taula nagusia berritu (DOM) ---
+        eguneratuTaulaNagusia();
+
+        // --- 5. Historiala gorde eta berritu ---
         guardarBidaiaHistorialean(bidaiaData, gidaria, bidaiariak);
-        
         kargatuHistoriala();
 
-        // Formularioa garbitu
+        // --- 6. Formularioa garbitu ---
         document.getElementById('bidaiForm').reset();
         dataHasieratu();
-        markatuHasierakoGidaria(); // Honek gidaria berriro blokeatuko du
+        markatuHasierakoGidaria();
     });
 
-    // Reset botoia
     document.getElementById('resetBtn').addEventListener('click', function() {
         if (confirm('¿Seguro que quieres borrar TODOS los datos (resumen e historial)?')) {
-            localStorage.removeItem('kotxeaDatos');
-            ['nerea', 'leire', 'naroa', 'gorka'].forEach(function(pertsona) {
-                document.getElementById('bidaiak-' + pertsona).textContent = '0';
-                document.getElementById('gidatu-' + pertsona).textContent = '0';
-                document.getElementById('emaitza-' + pertsona).textContent = '0';
-            });
-
+            // 1. Datuen objektua hasieratu
+            initDatuak();
+            
+            // 2. Datuak gorde (hutsik)
+            guardarDatos();
+            
+            // 3. Taula nagusia berritu
+            eguneratuTaulaNagusia();
+            
+            // 4. Historiala ezabatu
             localStorage.removeItem('kotxeaHistoriala');
             kargatuHistoriala(); 
-            markatuHasierakoGidaria(); // Berrezarri ondoren gidaria blokeatu
+            
+            // 5. Formularioa prest utzi
+            markatuHasierakoGidaria();
         }
     });
 });
