@@ -1,4 +1,4 @@
-    /* Paleta Laboral Kutxa */
+/* Paleta Laboral Kutxa */
 :root {
     --verde-laboral: #7BBE31;   /* Verde corporativo */
     --magenta-laboral: #C10072; /* Magenta corporativo */
@@ -15,7 +15,7 @@ body {
     margin: 20px;
 }
 
-/* Tabla */
+/* Tabla Nagusia (#miTabla) */
 #miTabla {
     width: 100%;
     border-collapse: collapse;
@@ -24,23 +24,43 @@ body {
     box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
 
-#miTabla th {
+#miTabla thead th {
     background-color: var(--magenta-laboral);
     color: var(--blanco);
     padding: 10px;
     text-align: center;
 }
 
+/* Pertsonen izenak (lehen zutabea) */
+#miTabla tbody td:first-child {
+    font-weight: bold;
+    text-align: left;
+    padding-left: 10px;
+    background-color: #f8f8f8;
+    border-right: 2px solid var(--gris-neutro);
+}
+
+/* Datu-gelaxkak (zenbakiak) */
 #miTabla td {
     border: 1px solid var(--gris-neutro);
     padding: 8px;
-    text-align: center;
+    text-align: right; /* ZENBAKIAK ESKUINERA */
+    padding-right: 10px;
+    font-family: 'Courier New', Courier, monospace; /* Zenbakientzat */
+    
+    /* HEMEN DAUDE ALDAKETAK */
+    color: #4a4a4a; /* Apur bat ilunagoa */
+    font-size: 1.1em; /* Letra-tamaina handitu */
+    font-weight: bold; /* Lodiago jarri */
+}
+/* Filas alternas */
+#miTabla tbody tr:nth-child(even) {
+    background-color: #fdfdfd;
+}
+#miTabla tbody tr:nth-child(odd) {
+    background-color: var(--blanco);
 }
 
-/* Filas alternas */
-#miTabla tr:nth-child(even) {
-    background-color: #f9f9f9;
-}
 
 /* Formulario */
 form {
@@ -90,14 +110,11 @@ button:hover {
 #historialaTaula th,
 #historialaTaula td {
   text-align: center;
-  /* Botoiak bertikalki ere zentratzeko (aukerakoa) */
   vertical-align: middle; 
 }
 
 footer {
-        padding: 15px;
-        font-size: 0.8em;
-        text-align: center;
-    }
-
-
+    padding: 15px;
+    font-size: 0.8em;
+    text-align: center;
+}
