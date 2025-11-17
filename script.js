@@ -78,9 +78,15 @@ document.addEventListener("DOMContentLoaded", function() {
             gidariaCell.textContent = bidaia.gidaria.charAt(0).toUpperCase() + bidaia.gidaria.slice(1);
 
             let bidaiariakCell = row.insertCell(2);
-            bidaiariakCell.textContent = bidaia.bidaiariak.join(', ');
+            
+            // --- ALDAKETA HEMEN: Bidaiarien izenak maiuskulaz jarri ---
+            let bidaiariakMayuscula = bidaia.bidaiariak.map(function(izena) {
+                return izena.charAt(0).toUpperCase() + izena.slice(1);
+            });
+            bidaiariakCell.textContent = bidaiariakMayuscula.join(', ');
+            // ---------------------------------------------------------
 
-            // --- ALDAKETA HEMEN: Ezabatzeko botoia gehitu ---
+            // --- Ezabatzeko botoia gehitu ---
             let ezabatuCell = row.insertCell(3);
             let ezabatuBtn = document.createElement('button');
             ezabatuBtn.textContent = 'Ezabatu';
@@ -127,7 +133,11 @@ document.addEventListener("DOMContentLoaded", function() {
         ['nerea', 'leire', 'naroa', 'gorka'].forEach(function(pertsona) {
             let bidaiak = parseFloat(document.getElementById('bidaiak-' + pertsona).textContent);
             let gidatu = parseFloat(document.getElementById('gidatu-' + pertsona).textContent);
-            let emaitza = bidaiak - gidatu;
+            
+            // --- ALDAKETA HEMEN: Kalkulua alderantziz ---
+            let emaitza = gidatu - bidaiak;
+            // ------------------------------------------
+            
             document.getElementById('emaitza-' + pertsona).textContent = emaitza.toFixed(2);
         });
 
@@ -145,12 +155,24 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // --- FUNTZIO LAGUNGARRIAK ---
 
+    // --- ALDAKETA HEMEN: Gidaria desgaituta uzteko ---
     function markatuHasierakoGidaria() {
+        // Lehenik, denak gaitu eta desmarkatu
+        document.querySelectorAll('input[name="bidaiariak"]').forEach(function(checkbox) {
+            checkbox.disabled = false;
+            // checkbox.checked = false; // Beharrezkoa bada, baina reset-ak egiten du
+        });
+
         let hasierakoGidaria = document.getElementById('nor').value;
         if(hasierakoGidaria) {
-            document.getElementById(hasierakoGidaria).checked = true;
+            let checkbox = document.getElementById(hasierakoGidaria);
+            if (checkbox) {
+                checkbox.checked = true;
+                checkbox.disabled = true; // Gidaria desgaituta utzi
+            }
         }
     }
+    // ------------------------------------------------
 
     function dataHasieratu() {
         document.getElementById('bidaiaData').valueAsDate = new Date();
@@ -166,19 +188,22 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // --- LISTENER-AK (EVENTOS) ---
 
-    // Gidaria aldatzekoa
+    // --- ALDAKETA HEMEN: Gidaria aldatzean desgaitzeko ---
     document.getElementById('nor').addEventListener('change', function() {
         let allCheckboxes = document.querySelectorAll('input[name="bidaiariak"]');
         allCheckboxes.forEach(function(checkbox) {
             checkbox.checked = false;
+            checkbox.disabled = false; // Gaitu guztiak lehenik
         });
 
         let gidariaId = this.value; 
         let checkboxGidaria = document.getElementById(gidariaId);
         if (checkboxGidaria) {
             checkboxGidaria.checked = true;
+            checkboxGidaria.disabled = true; // Desgaitu gidari berria
         }
     });
+    // ----------------------------------------------------
 
     // Historialaren filtroa
     document.getElementById('historialEpea').addEventListener('change', kargatuHistoriala);
@@ -223,7 +248,11 @@ document.addEventListener("DOMContentLoaded", function() {
         ['nerea', 'leire', 'naroa', 'gorka'].forEach(function(pertsona) {
             let bidaiak = parseFloat(document.getElementById('bidaiak-' + pertsona).textContent);
             let gidatu = parseFloat(document.getElementById('gidatu-' + pertsona).textContent);
-            let emaitza = bidaiak - gidatu;
+            
+            // --- ALDAKETA HEMEN: Kalkulua alderantziz ---
+            let emaitza = gidatu - bidaiak;
+            // ------------------------------------------
+
             document.getElementById('emaitza-' + pertsona).textContent = emaitza.toFixed(2);
         });
 
@@ -237,7 +266,7 @@ document.addEventListener("DOMContentLoaded", function() {
         // Formularioa garbitu
         document.getElementById('bidaiForm').reset();
         dataHasieratu();
-        markatuHasierakoGidaria();
+        markatuHasierakoGidaria(); // Honek gidaria berriro blokeatuko du
     });
 
     // Reset botoia
@@ -252,6 +281,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
             localStorage.removeItem('kotxeaHistoriala');
             kargatuHistoriala(); 
+            markatuHasierakoGidaria(); // Berrezarri ondoren gidaria blokeatu
         }
     });
 });
