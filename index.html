@@ -1,116 +1,108 @@
 <!doctype html>
-<html lang="es">
+<html lang="eu">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Kotxea</title>
-    <link rel="stylesheet" href="styles.css">
-    
+    <link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
-    
-    <table id="miTabla">
-        <thead>
-            <tr>
-                <th></th>
-                <th>Emaitza</th>
-                <th>Bidaiak</th>
-                <th>Kotxea BAI</th>
-                <th>Kotxea EZ</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>Nerea</td>
-                <td id="emaitza-nerea">0.00</td>
-                <td id="bidaiak-guztira-nerea">0</td>
-                <td id="gidatu-nerea">0</td>
-                <td id="passenger-nerea">0</td>
-            </tr>
-            <tr>
-                <td>Leire</td>
-                <td id="emaitza-leire">0.00</td>
-                <td id="bidaiak-guztira-leire">0</td>
-                <td id="gidatu-leire">0</td>
-                <td id="passenger-leire">0</td>
-            </tr>
-            <tr>
-                <td>Naroa</td>
-                <td id="emaitza-naroa">0.00</td>
-                <td id="bidaiak-guztira-naroa">0</td>
-                <td id="gidatu-naroa">0</td>
-                <td id="passenger-naroa">0</td>
-            </tr>
-            <tr>
-                <td>Gorka</td>
-                <td id="emaitza-gorka">0.00</td>
-                <td id="bidaiak-guztira-gorka">0</td>
-                <td id="gidatu-gorka">0</td>
-                <td id="passenger-gorka">0</td>
-            </tr>
-        </tbody>
-    </table>
-    <br><br>
-    
-    <form id="bidaiForm">
-        <strong>BIDAI BERRIA</strong>
-        <br><br>
-        <label for="bidaiaData">Eguna:</label>
-        <input type="date" id="bidaiaData" name="bidaiaData" required>
-        <br><br>
-        
-        <label for="nor">Nor da gidaria?</label>
-        <select name="nor" id="nor">
-            <option value="nerea">Nerea</option>
-            <option value="leire">Leire</option>
-            <option value="naroa">Naroa</option>
-            <option value="gorka">Gorka</option>
-        </select>
-        <br><br>
-        <label>Nortzuk joan dira?<br>
-        <input type="checkbox" name="bidaiariak" value="nerea" id="nerea">Nerea<br>
-        <input type="checkbox" name="bidaiariak" value="leire" id="leire">Leire<br>
-        <input type="checkbox" name="bidaiariak" value="naroa" id="naroa">Naroa<br>
-        <input type="checkbox" name="bidaiariak" value="gorka" id="gorka">Gorka<br>
-        <br>
-    </label>
-        <button type="submit">Bidai berria gehitu</button>
-    </form>
-    <br>
-    <button id="resetBtn">Reset</button>
+    <main>
+        <h1 class="sr-only">Kotxea</h1>
+        <p id="startupWarning" role="alert">Datuak kargatzen. Mezu hau desagertzen ez bada, berritu orria: JavaScript behar da bidaiak kudeatzeko.</p>
+        <p id="appStatus" role="status" aria-live="polite"></p>
+        <div class="table-scroll" role="region" aria-label="Bidaien laburpena" tabindex="0">
+            <table id="miTabla">
+                <caption class="sr-only">Pertsona bakoitzaren bidaien laburpena</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Pertsona</th>
+                        <th scope="col">Emaitza</th>
+                        <th scope="col">Bidaiak</th>
+                        <th scope="col">Kotxea BAI</th>
+                        <th scope="col">Kotxea EZ</th>
+                        <th scope="col">Ekintzak</th>
+                    </tr>
+                </thead>
+                <tbody id="laburpenaBody">
+                    <tr><td>Nerea</td><td id="emaitza-nerea">0.00</td><td id="bidaiak-guztira-nerea">0</td><td id="gidatu-nerea">0</td><td id="passenger-nerea">0</td><td>—</td></tr>
+                    <tr><td>Leire</td><td id="emaitza-leire">0.00</td><td id="bidaiak-guztira-leire">0</td><td id="gidatu-leire">0</td><td id="passenger-leire">0</td><td>—</td></tr>
+                    <tr><td>Naroa</td><td id="emaitza-naroa">0.00</td><td id="bidaiak-guztira-naroa">0</td><td id="gidatu-naroa">0</td><td id="passenger-naroa">0</td><td>—</td></tr>
+                    <tr><td>Gorka</td><td id="emaitza-gorka">0.00</td><td id="bidaiak-guztira-gorka">0</td><td id="gidatu-gorka">0</td><td id="passenger-gorka">0</td><td>—</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <form id="personForm" class="person-tools">
+            <label for="personName">Pertsona berria:</label>
+            <input type="text" id="personName" name="personName" maxlength="80" required autocomplete="off" disabled>
+            <button type="submit" disabled>Pertsona gehitu</button>
+            <button type="button" id="restoreDefaultsBtn" disabled>Hasierako lau pertsonak gehitu / aktibatu</button>
+        </form>
+        <p class="help">Pertsona guztiek gidatu dezakete. Bidaia duen pertsona bat kentzean, haren historia eta balantzea gordetzen dira; ez da bidaia berrien aukeretan agertuko.</p>
+        <details class="balance-help">
+            <summary>Nola kalkulatzen da emaitza?</summary>
+            <p>Emaitza = gidatutako bidaiak − bidaia bakoitzeko 1 / parte-hartzaile kopurua (gidaria barne). Positiboa: dagokiona baino gehiago gidatu du. Negatiboa: gidatzea falta zaio. Adibidez, lau pertsonako bidaian gidariak +0,75 eta besteek −0,25 jasotzen dute.</p>
+        </details>
 
-    <br><br>
-    <hr>
-    <br>
+        <form id="bidaiForm">
+            <h2 id="tripFormTitle">BIDAI BERRIA</h2>
+            <input type="hidden" id="editTripId">
+            <fieldset id="formControls" disabled>
+                <legend class="sr-only">Bidaia erregistratu</legend>
+                <div class="field"><label for="bidaiaData">Eguna:</label> <input type="date" id="bidaiaData" name="bidaiaData" required></div>
+                <div class="field">
+                    <label for="nor">Nor da gidaria?</label>
+                    <select name="nor" id="nor" required>
+                        <option value="nerea">Nerea</option>
+                        <option value="leire">Leire</option>
+                        <option value="naroa">Naroa</option>
+                        <option value="gorka">Gorka</option>
+                    </select>
+                </div>
+                <fieldset class="participants">
+                    <legend>Nortzuk joan dira?</legend>
+                    <div id="bidaiariakZerrenda">
+                        <label><input type="checkbox" name="bidaiariak" value="nerea" id="nerea" checked disabled>Nerea</label>
+                        <label><input type="checkbox" name="bidaiariak" value="leire" id="leire">Leire</label>
+                        <label><input type="checkbox" name="bidaiariak" value="naroa" id="naroa">Naroa</label>
+                        <label><input type="checkbox" name="bidaiariak" value="gorka" id="gorka">Gorka</label>
+                    </div>
+                    <p class="help">Gidaria automatikoki sartzen da.</p>
+                </fieldset>
+                <button type="submit" id="saveTripBtn">Bidai berria gehitu</button>
+                <button type="button" id="cancelEditBtn" hidden>Utzi</button>
+            </fieldset>
+        </form>
+        <button type="button" id="resetBtn">Reset</button>
 
-    <h3>Bidaia-Historiala</h3>
-    
-    <label for="historialEpea">Erakutsi:</label>
-    <select id="historialEpea">
-        <option value="30">Azken 30 egunak</option>
-        <option value="guztia">Historial osoa</option>
-    </select>
-    <br><br>
-    
-    <table id="historialaTaula" border="1" style="width:100%; border-collapse: collapse;">
-        <thead>
-            <tr>
-                <th>Data</th>
-                <th>Gidaria</th>
-                <th>Bidaiariak</th>
-                <th>Ezabatu</th> </tr>
-        </thead>
-        <tbody id="historialaBody">
-            </tbody>
-    </table>
-
-
-    <script src="script.js" ></script>
+        <hr>
+        <h2>Bidaia-Historiala</h2>
+        <div class="field">
+            <label for="historialEpea">Erakutsi:</label>
+            <select id="historialEpea">
+                <option value="30">Azken 30 egunak</option>
+                <option value="guztia">Historial osoa</option>
+            </select>
+        </div>
+        <div class="table-scroll" role="region" aria-label="Bidaia-Historiala" tabindex="0">
+            <table id="historialaTaula">
+                <caption class="sr-only">Erregistratutako bidaiak</caption>
+                <thead><tr><th scope="col">Data</th><th scope="col">Gidaria</th><th scope="col">Bidaiariak</th><th scope="col">Ekintzak</th></tr></thead>
+                <tbody id="historialaBody"></tbody>
+            </table>
+        </div>
+        <details class="backup-tools">
+            <summary>Segurtasun-kopiak</summary>
+            <p>Datuak nabigatzaile honetan soilik gordetzen dira. Egin kopia bat gailuz aldatu edo nabigatzailearen datuak garbitu aurretik. Inportazioak uneko datuak ordezkatzen ditu.</p>
+            <button type="button" id="exportBtn">JSON kopia deskargatu</button>
+            <label for="importFile">JSON kopia inportatu:</label>
+            <input type="file" id="importFile" accept=".json,application/json">
+        </details>
+    </main>
+    <footer>
+        <p>&copy; 2025 Eskubide guztiak erreserbatuta.</p>
+        <p>Garatzailea: <strong>Mikel Urtxegi</strong></p>
+    </footer>
+    <script src="script.js?v=2"></script>
 </body>
-<footer>
-  <p>&copy; 2025 Todos los derechos reservados.</p>
-  <p>Developed by <strong>Mikel Urtxegi</strong></p>
-</footer>
-
 </html>
-
