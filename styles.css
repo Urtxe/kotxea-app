@@ -47,7 +47,7 @@ body {
     text-align: right; /* ZENBAKIAK ESKUINERA */
     padding-right: 10px;
     font-family: 'Courier New', Courier, monospace; /* Zenbakientzat */
-    
+
     /* HEMEN DAUDE ALDAKETAK */
     color: #4a4a4a; /* Apur bat ilunagoa */
     font-size: 1.1em; /* Letra-tamaina handitu */
@@ -83,7 +83,7 @@ form select, form input[type="checkbox"] {
 /* Botones */
 button {
     background-color: var(--verde-laboral);
-    color: var(--blanco);
+    color: #20320c;
     border: none;
     padding: 10px 15px;
     margin-top: 10px;
@@ -95,26 +95,68 @@ button {
 
 button:hover {
     background-color: var(--magenta-laboral);
+    color: var(--blanco);
 }
 
 /* Botón Reset diferenciado */
 #resetBtn {
     background-color: var(--magenta-laboral);
+    color: var(--blanco);
 }
 
 #resetBtn:hover {
     background-color: var(--verde-laboral);
+    color: #20320c;
 }
 
 /* Historialaren taulako zelda guztiak zentratu */
 #historialaTaula th,
 #historialaTaula td {
   text-align: center;
-  vertical-align: middle; 
+  vertical-align: middle;
 }
 
 footer {
     padding: 15px;
     font-size: 0.8em;
     text-align: center;
+}
+
+/* Jatorrizko taula eta koloreak mantenduz, kontrol berriak. */
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.table-scroll { overflow-x: auto; }
+#miTabla { min-width: 580px; }
+#miTabla button { margin: 0; font: bold .85rem Arial, sans-serif; }
+.person-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; }
+.person-tools button { margin: 0; }
+.help { font-size: .875rem; line-height: 1.5; }
+.balance-help { margin: 12px 0 28px; }
+summary { cursor: pointer; }
+#bidaiForm { margin-bottom: 12px; }
+#tripFormTitle { margin: 0 0 20px; font-size: 1rem; }
+#formControls { border: 0; margin: 0; padding: 0; min-width: 0; }
+.field { margin-bottom: 20px; }
+.participants { padding: 0; margin: 0 0 14px; border: 0; }
+.participants legend { padding: 0; font-weight: bold; color: var(--magenta-laboral); }
+#bidaiariakZerrenda label { display: block; width: fit-content; min-height: 28px; line-height: 28px; }
+input:not([type="checkbox"]), select { max-width: 100%; min-height: 34px; font: inherit; }
+button { min-height: 34px; }
+:focus-visible { outline: 3px solid var(--magenta-laboral); outline-offset: 3px; }
+button:disabled { opacity: .6; cursor: not-allowed; }
+hr { margin: 28px 0; }
+h2 { font-size: 1.17rem; }
+#historialaTaula { width: 100%; min-width: 420px; border-collapse: collapse; }
+#historialaTaula th, #historialaTaula td { border: 1px solid #888; padding: 8px; }
+#historialaTaula button { margin: 4px; }
+.backup-tools { margin: 28px 0; }
+.backup-tools label { display: inline-block; margin: 12px 8px; }
+#appStatus:empty { display: none; }
+#appStatus:not(:empty), #startupWarning { border-left: 4px solid var(--magenta-laboral); background: white; padding: 12px; line-height: 1.5; }
+@media (max-width: 600px) {
+    body { margin: 12px; }
+    .person-tools input { min-width: 0; width: 100%; }
+    #miTabla td, #miTabla th { padding: 8px; }
+    button, input:not([type="checkbox"]), select { min-height: 44px; }
 }
