@@ -98,3 +98,43 @@ footer p { margin: 5px 0; }
     .app-header { border-radius: 0 0 24px 24px; }
     .bottom-nav { bottom: 24px; border-radius: 18px 18px 0 0; }
 }
+
+/* En escritorio se conserva la vista original: todo el contenido en una página. */
+@media (min-width: 601px) {
+    body { margin: 20px; padding: 0; background: var(--gris-neutro); }
+    .app-shell { width: auto; min-height: 0; margin: 0; background: transparent; box-shadow: none; }
+    .app-header, .bottom-nav, .screen-heading { display: none; }
+    main { padding: 0; }
+    .app-screen, .app-screen[hidden] { display: block !important; animation: none; }
+    .app-screen[data-screen="history"] { margin-top: 28px; padding-top: 28px; border-top: 1px solid #888; }
+    .app-screen[data-screen="history"] .screen-heading { display: block; margin: 0 0 20px; }
+    .app-screen[data-screen="history"] .screen-heading .eyebrow { display: none; }
+    .app-screen[data-screen="history"] .screen-caption { display: none; }
+    .app-screen[data-screen="history"] .screen-heading h2 { font-size: 1.17rem; }
+    .table-scroll { overflow-x: auto; border-radius: 0; background: transparent; box-shadow: none; }
+    #miTabla { min-width: 580px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0, 0, 0, .1); }
+    #miTabla thead th { padding: 10px; font-size: 1rem; }
+    #miTabla td { padding: 8px 10px; border: 1px solid var(--gris-neutro); font-size: 1.1em; }
+    #miTabla tbody td:first-child { padding-left: 10px; border-right: 2px solid var(--gris-neutro); }
+    #miTabla tbody tr:nth-child(even) { background: #fdfdfd; }
+    #miTabla tbody tr:nth-child(odd) { background: var(--blanco); }
+    form { padding: 15px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0, 0, 0, .1); }
+    form select, form input[type="checkbox"] { margin-top: 5px; }
+    .person-tools { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+    .person-tools input { flex: 1 1 auto; min-width: 0; width: auto; }
+    .person-tools button { width: auto; margin: 0; }
+    .help { font-size: .875rem; }
+    .balance-help { margin: 12px 0 28px; }
+    #bidaiForm { margin-bottom: 12px; }
+    #tripFormTitle { font-size: 1rem; }
+    #bidaiariakZerrenda { display: block; }
+    #bidaiariakZerrenda label { display: block; width: fit-content; min-height: 28px; padding: 0; border: 0; border-radius: 0; line-height: 28px; }
+    input:not([type="checkbox"]), select { width: auto; min-height: 34px; padding: 0; border: 1px solid #767676; border-radius: 2px; }
+    button { min-height: 34px; margin-top: 10px; padding: 10px 15px; border-radius: 5px; }
+    #resetBtn { width: auto; }
+    #historialaTaula { min-width: 420px; }
+    #historialaTaula th, #historialaTaula td { padding: 8px; border: 1px solid #888; font-size: 1rem; vertical-align: middle; }
+    #historialaTaula button { margin: 4px; }
+    .backup-tools { margin: 28px 0; }
+    footer { padding: 15px; font-size: .8em; }
+}
