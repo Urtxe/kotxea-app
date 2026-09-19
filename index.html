@@ -7,10 +7,23 @@
     <link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
+    <div class="app-shell">
+    <header class="app-header">
+        <div class="brand-mark" aria-hidden="true">K</div>
+        <div>
+            <p class="eyebrow">BIDAIAK PARTEKATUZ</p>
+            <h1>Kotxea</h1>
+        </div>
+        <span class="online-dot" title="Datuak gailu honetan gordetzen dira"></span>
+    </header>
     <main>
-        <h1 class="sr-only">Kotxea</h1>
         <p id="startupWarning" role="alert">Datuak kargatzen. Mezu hau desagertzen ez bada, berritu orria: JavaScript behar da bidaiak kudeatzeko.</p>
         <p id="appStatus" role="status" aria-live="polite"></p>
+        <section class="app-screen is-active" data-screen="summary" aria-labelledby="summaryTitle">
+        <div class="screen-heading">
+            <div><p class="eyebrow">ZURE TALDEA</p><h2 id="summaryTitle">Gidatze-balantzea</h2></div>
+            <span class="screen-caption">Egunean</span>
+        </div>
         <div class="table-scroll" role="region" aria-label="Bidaien laburpena" tabindex="0">
             <table id="miTabla">
                 <caption class="sr-only">Pertsona bakoitzaren bidaien laburpena</caption>
@@ -43,7 +56,13 @@
             <summary>Nola kalkulatzen da emaitza?</summary>
             <p>Emaitza = gidatutako bidaiak − bidaia bakoitzeko 1 / parte-hartzaile kopurua (gidaria barne). Positiboa: dagokiona baino gehiago gidatu du. Negatiboa: gidatzea falta zaio. Adibidez, lau pertsonako bidaian gidariak +0,75 eta besteek −0,25 jasotzen dute.</p>
         </details>
+        </section>
 
+        <section class="app-screen" data-screen="trip" aria-labelledby="tripFormTitle" hidden>
+        <div class="screen-heading">
+            <div><p class="eyebrow">ERREGISTRATU</p><p class="screen-title">Bidaia berria</p></div>
+            <span class="screen-caption">1 min</span>
+        </div>
         <form id="bidaiForm">
             <h2 id="tripFormTitle">BIDAI BERRIA</h2>
             <input type="hidden" id="editTripId">
@@ -74,9 +93,12 @@
             </fieldset>
         </form>
         <button type="button" id="resetBtn">Reset</button>
+        </section>
 
-        <hr>
-        <h2>Bidaia-Historiala</h2>
+        <section class="app-screen" data-screen="history" aria-labelledby="historyTitle" hidden>
+        <div class="screen-heading">
+            <div><p class="eyebrow">ZURE ERREGISTROA</p><h2 id="historyTitle">Bidaia-historiala</h2></div>
+        </div>
         <div class="field">
             <label for="historialEpea">Erakutsi:</label>
             <select id="historialEpea">
@@ -98,11 +120,18 @@
             <label for="importFile">JSON kopia inportatu:</label>
             <input type="file" id="importFile" accept=".json,application/json">
         </details>
+        </section>
     </main>
     <footer>
         <p>&copy; 2025 Eskubide guztiak erreserbatuta.</p>
         <p>Garatzailea: <strong>Mikel Urtxegi</strong></p>
     </footer>
+    <nav class="bottom-nav" aria-label="Nabigazio nagusia">
+        <button type="button" class="nav-item is-active" data-screen-target="summary" aria-current="page"><span aria-hidden="true">⌂</span>Laburpena</button>
+        <button type="button" class="nav-item" data-screen-target="trip"><span aria-hidden="true">＋</span>Bidaia</button>
+        <button type="button" class="nav-item" data-screen-target="history"><span aria-hidden="true">◷</span>Historiala</button>
+    </nav>
+    </div>
     <script src="script.js?v=2"></script>
 </body>
 </html>

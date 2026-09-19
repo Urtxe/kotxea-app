@@ -114,6 +114,19 @@
     let state = null; let readOnly = false; let snapshot = null; let storage; let editingTripIds = [];
     try { storage = root.localStorage; } catch (_) { storage = null; }
     function el(id) { return document.getElementById(id); }
+    function showScreen(name) {
+        document.querySelectorAll('[data-screen]').forEach(screen => {
+            const active = screen.dataset.screen === name;
+            screen.hidden = !active;
+            screen.classList.toggle('is-active', active);
+        });
+        document.querySelectorAll('[data-screen-target]').forEach(button => {
+            const active = button.dataset.screenTarget === name;
+            button.classList.toggle('is-active', active);
+            if (active) button.setAttribute('aria-current', 'page');
+            else button.removeAttribute('aria-current');
+        });
+    }
     function setStatus(message, loadFailed = false) {
         const target = el('appStatus');
         target.textContent = message || ''; target.hidden = !message;
@@ -174,6 +187,7 @@
     function editTrip(event) {
         const trip = state.trips.find(item => item.id === event.currentTarget.dataset.id);
         if (!trip) return;
+        showScreen('trip');
         editingTripIds = trip.passengers.slice(); renderPeopleChoices(editingTripIds);
         el('bidaiaData').value = trip.date;
         el('bidaiaData').max = trip.date > todayString() ? trip.date : todayString();
@@ -234,6 +248,9 @@
         el('cancelEditBtn').addEventListener('click', resetTripForm);
     }
     function setup() {
+        document.querySelectorAll('[data-screen-target]').forEach(button => {
+            button.addEventListener('click', () => showScreen(button.dataset.screenTarget));
+        });
         el('exportBtn')?.addEventListener('click', exportState); el('importFile')?.addEventListener('change', importState); el('resetBtn')?.addEventListener('click', resetState);
         if (!storage) { readOnly = true; setStatus('Biltegiratzea ez dago erabilgarri. Datuak irakurtzeko moduan.', true); return; }
         const result = parseStored(storage); if (result.error) { readOnly = true; setStatus(result.error + ' Egin babeskopia edo inportatu fitxategi baliozko bat.', true); return; }
