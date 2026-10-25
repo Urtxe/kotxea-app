@@ -60,6 +60,14 @@
         state.people.forEach(person => { const opening = state.opening[person.id] || emptyOpening(); const trip = contributions[person.id]; const gidatu = opening.gidatu + trip.gidatu; const bidaiak = opening.bidaiak_guztira + trip.bidaiak_guztira; const participation = opening.bidaiak_portzentaia + trip.bidaiak_portzentaia; result[person.id] = { gidatu, bidaiak_guztira: bidaiak, bidaiak_portzentaia: participation, emaitza: gidatu - participation }; });
         return result;
     }
+    function suggestDrivers(state, participantIds) {
+        const selected = new Set(participantIds);
+        const candidates = state.people.filter(person => person.active && selected.has(person.id));
+        if (candidates.length < 2) return [];
+        const summary = calculateSummary(state);
+        const lowest = Math.min(...candidates.map(person => summary[person.id].emaitza));
+        return candidates.filter(person => Math.abs(summary[person.id].emaitza - lowest) < 1e-9);
+    }
     function normalizeLegacyTrip(trip, people) {
         if (!trip || (typeof trip.id !== 'string' && typeof trip.id !== 'number') || !validId(String(trip.id)) || !validDate(trip.data) || !validId(trip.gidaria) || !people.has(trip.gidaria) || !Array.isArray(trip.bidaiariak)) return null;
         const normalized = { id: String(trip.id), date: trip.data, driver: trip.gidaria, passengers: trip.bidaiariak.slice() };
@@ -107,7 +115,7 @@
     function removePerson(state, id) { const person = state.people.find(item => item.id === id); if (!person) return { error: 'Pertsona ez da aurkitu.' }; const opening = state.opening[id] || emptyOpening(); const used = state.trips.some(trip => trip.driver === id || trip.passengers.includes(id)) || opening.gidatu > 0 || opening.bidaiak_guztira > 0 || opening.bidaiak_portzentaia > 0; if (used) { person.active = false; return { archived: true }; } state.people = state.people.filter(item => item.id !== id); delete state.opening[id]; return { removed: true }; }
     function restoreDefaults(state) { DEFAULT_PEOPLE.forEach(defaultPerson => { const existing = state.people.find(person => person.id === defaultPerson.id || person.name.trim().toLocaleLowerCase() === defaultPerson.name.toLocaleLowerCase()); if (existing) existing.active = true; else { state.people.push(clone(defaultPerson)); state.opening[defaultPerson.id] = emptyOpening(); } }); }
 
-    const api = { VERSION, STATE_KEY, SUMMARY_KEY, HISTORY_KEY, DEFAULT_PEOPLE, emptyState, validateState, validateImport: validateState, calculateSummary, parseStored, migrateLegacy, addPerson, removePerson, restoreDefaults, todayString };
+    const api = { VERSION, STATE_KEY, SUMMARY_KEY, HISTORY_KEY, DEFAULT_PEOPLE, emptyState, validateState, validateImport: validateState, calculateSummary, suggestDrivers, parseStored, migrateLegacy, addPerson, removePerson, restoreDefaults, todayString };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (typeof document === 'undefined') return;
 
@@ -224,7 +232,18 @@
         el('formControls').disabled = readOnly || included.size === 0;
         if (included.size === 0) setStatus('Ez dago pertsona aktiborik; gehitu edo berreskuratu pertsona bat bidaia berriak sortzeko.');
     }
-    function updateDriverCheckbox(reset = false) { const driver = el('nor'); if (!driver) return; document.querySelectorAll('input[name="bidaiariak"]').forEach(checkbox => { if (reset) checkbox.checked = false; if (checkbox.value === driver.value) checkbox.checked = true; checkbox.disabled = checkbox.value === driver.value; }); }
+    function renderDriverSuggestion() {
+        const target = el('driverSuggestion');
+        target.hidden = Boolean(el('editTripId').value);
+        if (target.hidden || !state) return;
+        const selected = [...document.querySelectorAll('input[name="bidaiariak"]:checked')].map(input => input.value);
+        const suggested = suggestDrivers(state, selected);
+        const summary = calculateSummary(state);
+        target.textContent = suggested.length
+            ? 'Gidatzeko proposamena: ' + suggested.map(person => person.name + ' (' + formatNumber(summary[person.id].emaitza) + ')').join(', ') + '. Balantzerik txikiena duten parte-hartzaile aktiboak.'
+            : 'Hautatu gutxienez bi pertsona gidatzeko proposamena ikusteko.';
+    }
+    function updateDriverCheckbox(reset = false) { const driver = el('nor'); if (!driver) return; document.querySelectorAll('input[name="bidaiariak"]').forEach(checkbox => { if (reset) checkbox.checked = false; if (checkbox.value === driver.value) checkbox.checked = true; checkbox.disabled = checkbox.value === driver.value; }); renderDriverSuggestion(); }
     function renderHistory() {
         const body = el('historialaBody'); if (!body || !state) return; body.innerHTML = ''; const filter = el('historialEpea'); const cutoff = new Date(); cutoff.setHours(0, 0, 0, 0); cutoff.setDate(cutoff.getDate() - 30); const people = peopleMap(state.people);
         state.trips.slice().reverse().filter(trip => !filter || filter.value !== '30' || new Date(trip.date + 'T00:00:00') >= cutoff).forEach(trip => { const row = body.insertRow(); row.insertCell().textContent = new Date(trip.date + 'T00:00:00').toLocaleDateString('es-ES'); row.insertCell().textContent = people.get(trip.driver)?.name || trip.driver; row.insertCell().textContent = trip.passengers.map(id => people.get(id)?.name || id).join(', '); const actions = row.insertCell(); const edit = document.createElement('button'); edit.type = 'button'; edit.textContent = 'Editatu'; edit.dataset.id = trip.id; edit.addEventListener('click', editTrip); const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Ezabatu'; remove.dataset.id = trip.id; remove.addEventListener('click', deleteTrip); actions.append(edit, remove); [...row.cells].forEach((cell, index) => { cell.dataset.label = ['Data', 'Gidaria', 'Bidaiariak', 'Ekintzak'][index]; }); });
@@ -321,6 +340,7 @@
         readyListenersBound = true;
         el('nor').addEventListener('change', () => updateDriverCheckbox(true));
         el('historialEpea').addEventListener('change', renderHistory);
+        el('bidaiariakZerrenda').addEventListener('change', renderDriverSuggestion);
         el('bidaiForm').addEventListener('submit', submitTrip);
         el('personForm').addEventListener('submit', toggleAddPerson);
         el('restoreDefaultsBtn').addEventListener('click', () => { const next = clone(state); restoreDefaults(next); persist(next); });

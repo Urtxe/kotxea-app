@@ -122,3 +122,6 @@ Restaura los datos locales del navegador de prueba al finalizar.
 
 
 Este software se distribuye bajo AGPLv3. Para usos comerciales, contactar al autor para obtener licencia.
+
+Mejoras de uso:
+- El formulario propone a las personas activas seleccionadas con el menor balance; muestra los empates y no cambia el conductor automáticamente.

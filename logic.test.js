@@ -4,6 +4,7 @@ const {
     DEFAULT_PEOPLE,
     emptyState,
     calculateSummary,
+    suggestDrivers,
     migrateLegacy,
     parseStored,
     validateState,
@@ -139,4 +140,17 @@ test('malformed v1 state and unknown future state remain in recovery mode', () =
     assert.match(parseStored(malformed).error, /egitura/);
     const future = { getItem(key) { return key === 'kotxeaEstado' ? JSON.stringify({ version: 99 }) : null; } };
     assert.match(parseStored(future).error, /bertsioa/);
+});
+
+test('driver suggestion uses the lowest balance among selected active people and preserves ties', () => {
+    const state = emptyState();
+    state.trips.push({ id: 'suggestion', date: '2026-10-25', driver: 'nerea', passengers: ['nerea', 'leire', 'naroa'] });
+    assert.deepEqual(suggestDrivers(state, ['nerea', 'leire', 'naroa']).map(person => person.id), ['leire', 'naroa']);
+    assert.deepEqual(suggestDrivers(state, ['nerea', 'gorka']).map(person => person.id), ['gorka']);
+    state.people.find(person => person.id === 'leire').active = false;
+    assert.deepEqual(suggestDrivers(state, ['nerea', 'leire', 'naroa']).map(person => person.id), ['naroa']);
+    assert.deepEqual(suggestDrivers(state, ['nerea']), []);
+    state.opening.nerea.bidaiak_portzentaia = 1;
+    state.opening.naroa.bidaiak_portzentaia = 1e-16;
+    assert.deepEqual(suggestDrivers(state, ['nerea', 'naroa']).map(person => person.id), ['nerea', 'naroa']);
 });

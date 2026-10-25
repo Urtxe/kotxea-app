@@ -146,3 +146,5 @@ footer p { margin: 4px 0; }
 .save-dialog p { margin: 8px 0 0; color: var(--tinta-suave); font-size: .9rem; }
 .save-dialog form { margin: 20px 0 0; padding: 0; border: 0; background: none; box-shadow: none; }
 .save-dialog button { min-width: 100px; }
+
+.driver-suggestion { padding: 12px; border-left: 3px solid var(--verde-laboral); border-radius: 8px; background: rgba(123, 190, 49, .08); overflow-wrap: anywhere; }
