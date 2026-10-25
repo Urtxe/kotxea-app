@@ -148,3 +148,14 @@ footer p { margin: 4px 0; }
 .save-dialog button { min-width: 100px; }
 
 .driver-suggestion { padding: 12px; border-left: 3px solid var(--verde-laboral); border-radius: 8px; background: rgba(123, 190, 49, .08); overflow-wrap: anywhere; }
+
+.history-filters { display: grid; gap: 12px; margin-bottom: 16px; }
+.history-filters .field { min-width: 0; margin: 0; }
+.history-filters button { justify-self: start; }
+.date-range { display: grid; gap: 12px; }
+.empty-state { padding: 20px; border: 1px solid var(--borde); border-radius: 16px; background: var(--panel); }
+@media (min-width: 640px) {
+    .history-filters, .date-range { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .date-range, .history-filters button { grid-column: 1 / -1; }
+    .history-filters #historialEpea { max-width: none; }
+}

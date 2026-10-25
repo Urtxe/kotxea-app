@@ -128,3 +128,4 @@ Mejoras de uso:
 - Cambiar el conductor conserva los pasajeros seleccionados e incluye automáticamente al nuevo conductor.
 - El historial se ordena por fecha del viaje, de más reciente a más antiguo; las ediciones actualizan su posición.
 - «Errepikatu» abre una copia del viaje con la fecha de hoy para revisarla antes de guardar. Excluye personas archivadas y avisa si debe revisarse el conductor.
+- El historial permite filtrar por participante (también archivado) y por fechas inclusivas, incluso con un solo límite. «Iragazkiak garbitu» muestra todo el historial. Distingue entre historial vacío, fechas incorrectas y ausencia de coincidencias.

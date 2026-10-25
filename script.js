@@ -244,11 +244,68 @@
             : 'Hautatu gutxienez bi pertsona gidatzeko proposamena ikusteko.';
     }
     function updateDriverCheckbox(reset = false) { const driver = el('nor'); if (!driver) return; document.querySelectorAll('input[name="bidaiariak"]').forEach(checkbox => { if (reset) checkbox.checked = false; if (checkbox.value === driver.value) checkbox.checked = true; checkbox.disabled = checkbox.value === driver.value; }); renderDriverSuggestion(); }
-    function renderHistory() {
-        const body = el('historialaBody'); if (!body || !state) return; body.innerHTML = ''; const filter = el('historialEpea'); const cutoff = new Date(); cutoff.setHours(0, 0, 0, 0); cutoff.setDate(cutoff.getDate() - 30); const people = peopleMap(state.people);
-        state.trips.slice().reverse().sort((a, b) => b.date.localeCompare(a.date)).filter(trip => !filter || filter.value !== '30' || new Date(trip.date + 'T00:00:00') >= cutoff).forEach(trip => { const row = body.insertRow(); row.insertCell().textContent = new Date(trip.date + 'T00:00:00').toLocaleDateString('es-ES'); row.insertCell().textContent = people.get(trip.driver)?.name || trip.driver; row.insertCell().textContent = trip.passengers.map(id => people.get(id)?.name || id).join(', '); const actions = row.insertCell(); const edit = document.createElement('button'); edit.type = 'button'; edit.textContent = 'Editatu'; edit.dataset.id = trip.id; edit.addEventListener('click', editTrip); const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Ezabatu'; remove.dataset.id = trip.id; remove.addEventListener('click', deleteTrip); const repeat = document.createElement('button'); repeat.type = 'button'; repeat.textContent = 'Errepikatu'; repeat.dataset.id = trip.id; repeat.addEventListener('click', event => editTrip(event, true)); actions.append(repeat, edit, remove); [...row.cells].forEach((cell, index) => { cell.dataset.label = ['Data', 'Gidaria', 'Bidaiariak', 'Ekintzak'][index]; }); });
+    function renderHistoryPeople() {
+        const select = el('historyPerson');
+        const selected = select.value;
+        select.replaceChildren(new Option('Pertsona guztiak', ''));
+        state.people.forEach(person => select.add(new Option(person.name + (person.active ? '' : ' (artxibatua)'), person.id)));
+        if (state.people.some(person => person.id === selected)) select.value = selected;
     }
-    function renderAll() { renderSummary(); renderPeopleChoices(); renderHistory(); }
+    function renderHistory() {
+        const body = el('historialaBody');
+        if (!body || !state) return;
+        body.replaceChildren();
+        const period = el('historialEpea').value;
+        const person = el('historyPerson').value;
+        const from = el('historyFrom').value;
+        const to = el('historyTo').value;
+        const custom = period === 'custom';
+        el('historyDateRange').hidden = !custom;
+        const invalidRange = custom && ((from && !validDate(from)) || (to && !validDate(to)) || (from && to && from > to));
+        const cutoff = new Date();
+        cutoff.setHours(0, 0, 0, 0);
+        cutoff.setDate(cutoff.getDate() - 30);
+        const trips = invalidRange ? [] : state.trips.slice().reverse()
+            .sort((a, b) => b.date.localeCompare(a.date))
+            .filter(trip => (!person || trip.passengers.includes(person))
+                && (period !== '30' || new Date(trip.date + 'T00:00:00') >= cutoff)
+                && (!custom || ((!from || trip.date >= from) && (!to || trip.date <= to))));
+        const feedback = el('historyFeedback');
+        feedback.textContent = invalidRange ? 'Data-tartea ez da baliozkoa. Hasiera amaiera baino lehenagokoa edo egun berekoa izan behar da.'
+            : state.trips.length === 0 ? 'Oraindik ez dago bidaiarik. Gehitu lehen bidaia Bidaia atalean.'
+            : trips.length === 0 ? 'Ez dago iragazki horiekin bat datorren bidaiarik. Aldatu edo garbitu iragazkiak.'
+            : trips.length + ' bidaia aurkitu dira.';
+        feedback.classList.toggle('empty-state', trips.length === 0);
+        el('historyTable').hidden = trips.length === 0;
+        const people = peopleMap(state.people);
+        trips.forEach(trip => {
+            const row = body.insertRow();
+            [
+                ['Data', new Date(trip.date + 'T00:00:00').toLocaleDateString('es-ES')],
+                ['Gidaria', people.get(trip.driver)?.name || trip.driver],
+                ['Bidaiariak', trip.passengers.map(id => people.get(id)?.name || id).join(', ')]
+            ].forEach(([label, text]) => {
+                const cell = row.insertCell();
+                cell.dataset.label = label;
+                cell.textContent = text;
+            });
+            const actions = row.insertCell();
+            actions.dataset.label = 'Ekintzak';
+            [
+                ['Errepikatu', event => editTrip(event, true)],
+                ['Editatu', editTrip],
+                ['Ezabatu', deleteTrip]
+            ].forEach(([label, handler]) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = label;
+                button.dataset.id = trip.id;
+                button.addEventListener('click', handler);
+                actions.append(button);
+            });
+        });
+    }
+    function renderAll() { renderSummary(); renderPeopleChoices(); renderHistoryPeople(); renderHistory(); }
     function persist(nextState, recovery = false) {
         if ((!recovery && readOnly) || !validateState(nextState)) { setStatus('Datuak ez dira baliozkoak edo ezin dira aldatu.'); return false; }
         // ponytail: detects stale tabs; simultaneous writers still need Web Locks or IndexedDB.
@@ -347,6 +404,15 @@
         readyListenersBound = true;
         el('nor').addEventListener('change', () => updateDriverCheckbox());
         el('historialEpea').addEventListener('change', renderHistory);
+        el('historyPerson').addEventListener('change', renderHistory);
+        ['historyFrom', 'historyTo'].forEach(id => el(id).addEventListener('input', renderHistory));
+        el('clearHistoryFilters').addEventListener('click', () => {
+            el('historialEpea').value = 'guztia';
+            el('historyPerson').value = '';
+            el('historyFrom').value = '';
+            el('historyTo').value = '';
+            renderHistory();
+        });
         el('bidaiariakZerrenda').addEventListener('change', renderDriverSuggestion);
         el('bidaiForm').addEventListener('submit', submitTrip);
         el('personForm').addEventListener('submit', toggleAddPerson);
