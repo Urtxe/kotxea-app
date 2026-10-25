@@ -28,7 +28,7 @@
         <ul id="balanceList" class="balance-list" aria-label="Pertsona bakoitzaren gidatze-balantzea"></ul>
         <details class="balance-help">
             <summary>Nola kalkulatzen da emaitza?</summary>
-            <p>Emaitza = gidatutako bidaiak − bidaia bakoitzeko 1 / parte-hartzaile kopurua (gidaria barne). Positiboa: dagokiona baino gehiago gidatu du. Negatiboa: gidatzea falta zaio. Adibidez, lau pertsonako bidaian gidariak +0,75 eta besteek −0,25 jasotzen dute.</p>
+            <p>Emaitza = hasierako saldoa + gidatutako bidaiak − bidaia bakoitzeko 1 / parte-hartzaile kopurua (gidaria barne). Positiboa: dagokiona baino gehiago gidatu du. Negatiboa: gidatzea falta zaio. Adibidez, lau pertsonako bidaian gidariak +0,75 eta besteek −0,25 jasotzen dute.</p>
         </details>
         </section>
 
@@ -113,6 +113,17 @@
             <button type="submit" disabled>Pertsona gehitu</button>
             <button type="button" id="restoreDefaultsBtn" class="secondary-button" disabled>Hasierako lau pertsonak gehitu / aktibatu</button>
         </form>
+        <details class="settings-panel">
+            <summary>Hasierako saldoak konfiguratu</summary>
+            <p id="openingHelp">Sartu Excel-ean pertsona bakoitzak duen saldoa, positiboa edo negatiboa (adibidez: +2,50 edo -1,25). Saldo honi aplikazioko bidaien balantzea gehitzen zaio. Ez du aurreko bidaiarik edo kontagailurik sortzen. Gero ere zuzendu dezakezu; erregistratutako bidaiak mantenduko dira.</p>
+            <form id="openingForm">
+                <fieldset id="openingControls" disabled>
+                    <legend>Hasierako saldoak</legend>
+                    <div id="openingBalances"></div>
+                    <button type="submit">Hasierako saldoak gorde</button>
+                </fieldset>
+            </form>
+        </details>
         <details class="backup-tools settings-panel">
             <summary>Segurtasun-kopiak</summary>
             <p>Datuak nabigatzaile honetan soilik gordetzen dira. Egin kopia bat gailuz aldatu edo nabigatzailearen datuak garbitu aurretik. Inportazioak uneko datuak ordezkatzen ditu.</p>
@@ -122,8 +133,11 @@
         </details>
         <details class="settings-panel reset-tools">
             <summary>Bidaiak eta balantzeak berrezarri</summary>
-            <p>Ekintza honek bidaien historia eta balantze guztiak ezabatzen ditu. Taldeko pertsonak mantentzen dira. Egin segurtasun-kopia bat lehenik.</p>
-            <button type="button" id="resetBtn" class="danger-button">Bidaiak eta balantzeak ezabatu</button>
+            <p>Bi aukerek aplikazioan erregistratutako bidaia guztiak ezabatzen dituzte eta taldeko pertsonak mantentzen dituzte. Egin segurtasun-kopia bat lehenik.</p>
+            <p>Hasierako saldoetara itzuli: Excel-etik sartutako saldoak berreskuratzen ditu.</p>
+            <button type="button" id="resetToOpeningBtn" class="danger-button" disabled>Bidaiak ezabatu eta hasierako saldoetara itzuli</button>
+            <p>Zerotik hasi: bidaiak eta hasierako saldoak ezabatzen ditu. Denak 0ra itzultzen dira.</p>
+            <button type="button" id="resetBtn" class="danger-button">Dena ezabatu eta zerotik hasi</button>
         </details>
         </section>
     </main>
@@ -144,6 +158,6 @@
         <p>Bidaia ondo gorde da.</p>
         <form method="dialog"><button autofocus>Ados</button></form>
     </dialog>
-    <script src="script.js?v=6"></script>
+    <script src="script.js?v=7"></script>
 </body>
 </html>

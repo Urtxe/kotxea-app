@@ -27,6 +27,22 @@
     function validDate(value) { if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false; const [year, month, day] = value.split('-').map(Number); const parsed = new Date(year, month - 1, day); return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day; }
     function number(value) { return typeof value === 'number' && Number.isFinite(value); }
     function emptyOpening() { return { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0 }; }
+    function openingBalance(opening) { return opening.gidatu - opening.bidaiak_portzentaia + (opening.balance ?? 0); }
+    function setOpeningBalances(state, balances) {
+        const next = clone(state);
+        for (const person of next.people) {
+            const value = balances[person.id];
+            if (!number(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) return { error: 'Pertsona bakoitzarentzat baliozko hasierako saldo bat sartu.' };
+            const opening = next.opening[person.id];
+            opening.balance = value - (opening.gidatu - opening.bidaiak_portzentaia);
+        }
+        return validateState(next) ? { state: next } : { error: 'Hasierako saldoak ez dira baliozkoak.' };
+    }
+    function resetTrips(state, clearOpening = false) {
+        const next = clone(state); next.trips = [];
+        if (clearOpening) next.people.forEach(person => { next.opening[person.id] = emptyOpening(); });
+        return next;
+    }
     function emptyState() {
         const state = { version: VERSION, people: clone(DEFAULT_PEOPLE), trips: [], opening: Object.create(null) };
         state.people.forEach(person => { state.opening[person.id] = emptyOpening(); }); return state;
@@ -47,6 +63,7 @@
             if (!validatePerson(person) || ids.has(person.id) || names.has(normalizedName)) return false; ids.add(person.id); names.add(normalizedName);
             if (!Object.prototype.hasOwnProperty.call(state.opening, person.id)) return false;
             const opening = state.opening[person.id]; if (!opening || !Number.isSafeInteger(opening.gidatu) || opening.gidatu < 0 || !Number.isSafeInteger(opening.bidaiak_guztira) || opening.bidaiak_guztira < 0 || opening.gidatu > opening.bidaiak_guztira || !number(opening.bidaiak_portzentaia) || opening.bidaiak_portzentaia < 0 || opening.bidaiak_portzentaia > opening.bidaiak_guztira) return false;
+            if (Object.prototype.hasOwnProperty.call(opening, 'balance') && (!number(opening.balance) || Math.abs(opening.balance) > Number.MAX_SAFE_INTEGER)) return false;
         }
         const people = peopleMap(state.people); return state.trips.every(trip => { if (!trip || !validateTrip(trip, people) || tripIds.has(trip.id)) return false; tripIds.add(trip.id); return true; });
     }
@@ -57,7 +74,7 @@
     }
     function calculateSummary(state) {
         const result = Object.create(null); const contributions = tripContribution(state);
-        state.people.forEach(person => { const opening = state.opening[person.id] || emptyOpening(); const trip = contributions[person.id]; const gidatu = opening.gidatu + trip.gidatu; const bidaiak = opening.bidaiak_guztira + trip.bidaiak_guztira; const participation = opening.bidaiak_portzentaia + trip.bidaiak_portzentaia; result[person.id] = { gidatu, bidaiak_guztira: bidaiak, bidaiak_portzentaia: participation, emaitza: gidatu - participation }; });
+        state.people.forEach(person => { const opening = state.opening[person.id] || emptyOpening(); const trip = contributions[person.id]; const gidatu = opening.gidatu + trip.gidatu; const bidaiak = opening.bidaiak_guztira + trip.bidaiak_guztira; const participation = opening.bidaiak_portzentaia + trip.bidaiak_portzentaia; result[person.id] = { gidatu, bidaiak_guztira: bidaiak, bidaiak_portzentaia: participation, emaitza: openingBalance(opening) + trip.gidatu - trip.bidaiak_portzentaia }; });
         return result;
     }
     function suggestDrivers(state, participantIds) {
@@ -112,10 +129,10 @@
         const result = migrateLegacy(summaryRaw, historyRaw, stateRaw); if (result.state && !validateState(result.state)) return { error: 'Gordetako migrazioaren emaitza ez da baliozkoa.', raw: { stateRaw, summaryRaw, historyRaw } }; return result;
     }
     function addPerson(state, name) { const clean = String(name || '').trim(); if (!clean || clean.length > 80) return { error: 'Izena beharrezkoa da.' }; if (state.people.some(person => person.name.toLocaleLowerCase() === clean.toLocaleLowerCase())) return { error: 'Pertsona hori dagoeneko badago.' }; const person = { id: makeId(), name: clean, active: true, default: false }; state.people.push(person); state.opening[person.id] = emptyOpening(); return { person }; }
-    function removePerson(state, id) { const person = state.people.find(item => item.id === id); if (!person) return { error: 'Pertsona ez da aurkitu.' }; const opening = state.opening[id] || emptyOpening(); const used = state.trips.some(trip => trip.driver === id || trip.passengers.includes(id)) || opening.gidatu > 0 || opening.bidaiak_guztira > 0 || opening.bidaiak_portzentaia > 0; if (used) { person.active = false; return { archived: true }; } state.people = state.people.filter(item => item.id !== id); delete state.opening[id]; return { removed: true }; }
+    function removePerson(state, id) { const person = state.people.find(item => item.id === id); if (!person) return { error: 'Pertsona ez da aurkitu.' }; const opening = state.opening[id] || emptyOpening(); const used = state.trips.some(trip => trip.driver === id || trip.passengers.includes(id)) || opening.gidatu > 0 || opening.bidaiak_guztira > 0 || opening.bidaiak_portzentaia > 0 || (opening.balance ?? 0) !== 0; if (used) { person.active = false; return { archived: true }; } state.people = state.people.filter(item => item.id !== id); delete state.opening[id]; return { removed: true }; }
     function restoreDefaults(state) { DEFAULT_PEOPLE.forEach(defaultPerson => { const existing = state.people.find(person => person.id === defaultPerson.id || person.name.trim().toLocaleLowerCase() === defaultPerson.name.toLocaleLowerCase()); if (existing) existing.active = true; else { state.people.push(clone(defaultPerson)); state.opening[defaultPerson.id] = emptyOpening(); } }); }
 
-    const api = { VERSION, STATE_KEY, SUMMARY_KEY, HISTORY_KEY, DEFAULT_PEOPLE, emptyState, validateState, validateImport: validateState, calculateSummary, suggestDrivers, parseStored, migrateLegacy, addPerson, removePerson, restoreDefaults, todayString };
+    const api = { VERSION, STATE_KEY, SUMMARY_KEY, HISTORY_KEY, DEFAULT_PEOPLE, emptyState, validateState, validateImport: validateState, calculateSummary, suggestDrivers, parseStored, migrateLegacy, addPerson, removePerson, restoreDefaults, todayString, openingBalance, setOpeningBalances, resetTrips };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (typeof document === 'undefined') return;
 
@@ -198,7 +215,9 @@
                 item.append(term, amount);
                 stats.append(item);
             });
-            details.append(toggle, stats);
+            const initial = document.createElement('p'); initial.className = 'help';
+            initial.textContent = 'Hasierako saldoa: ' + formatNumber(openingBalance(state.opening[person.id])) + '. Excel-eko saldoak ez du bidaia-kontagailurik gehitzen.';
+            details.append(toggle, initial, stats);
             card.append(heading, result, details);
             balances.append(card);
 
@@ -305,7 +324,32 @@
             });
         });
     }
-    function renderAll() { renderSummary(); renderPeopleChoices(); renderHistoryPeople(); renderHistory(); }
+    function renderOpeningBalances() {
+        const container = el('openingBalances'); container.replaceChildren();
+        state.people.forEach(person => {
+            const field = document.createElement('div'); field.className = 'field';
+            const label = document.createElement('label'); label.htmlFor = 'opening-' + person.id;
+            label.textContent = person.name + (person.active ? '' : ' (artxibatua)');
+            const input = document.createElement('input'); input.id = label.htmlFor;
+            input.type = 'text'; input.inputMode = 'decimal'; input.required = true;
+            input.dataset.personId = person.id; input.value = String(openingBalance(state.opening[person.id])).replace('.', ',');
+            input.setAttribute('aria-describedby', 'openingHelp');
+            field.append(label, input); container.append(field);
+        });
+    }
+    function saveOpeningBalances(event) {
+        event.preventDefault(); if (readOnly) return;
+        const balances = Object.create(null);
+        for (const input of el('openingBalances').querySelectorAll('input')) {
+            const value = input.value.trim().replace(',', '.');
+            if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) { setStatus('Sartu baliozko zenbaki bat; adibidez: -1,25.'); input.focus(); return; }
+            balances[input.dataset.personId] = Number(value);
+        }
+        const result = setOpeningBalances(state, balances);
+        if (result.error) { setStatus(result.error); return; }
+        persist(result.state);
+    }
+    function renderAll() { renderSummary(); renderPeopleChoices(); renderHistoryPeople(); renderHistory(); renderOpeningBalances(); }
     function persist(nextState, recovery = false) {
         if ((!recovery && readOnly) || !validateState(nextState)) { setStatus('Datuak ez dira baliozkoak edo ezin dira aldatu.'); return false; }
         // ponytail: detects stale tabs; simultaneous writers still need Web Locks or IndexedDB.
@@ -390,16 +434,21 @@
         link.download = 'kotxea-' + todayString() + '.json';
         link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     }
-    function resetState() {
-        if (!confirm('Ziur zaude bidaien historia eta kontagailuak berrezarri nahi dituzula?')) return;
-        const next = state ? clone(state) : emptyState(); next.trips = [];
-        next.people.forEach(person => { next.opening[person.id] = emptyOpening(); });
+    function resetState(clearOpening = true) {
+        if (!clearOpening && (readOnly || !state)) return;
+        const message = clearOpening
+            ? 'Bidaia guztiak eta hasierako saldoak ezabatuko dira. Denak zerotik hasiko dira. Pertsonak mantenduko dira. Jarraitu?'
+            : 'Aplikazioan erregistratutako bidaia guztiak ezabatuko dira eta hasierako saldoetara itzuliko zara. Pertsonak mantenduko dira. Jarraitu?';
+        if (!confirm(message)) return;
+        const next = resetTrips(state || emptyState(), clearOpening);
         if (persist(next, readOnly)) { el('startupWarning').hidden = true; bindReadyListeners(); resetTripForm(); }
     }
     let readyListenersBound = false;
     function bindReadyListeners() {
         el('personName').disabled = false;
         el('personForm').querySelectorAll('button').forEach(button => { button.disabled = false; });
+        el('openingControls').disabled = false;
+        el('resetToOpeningBtn').disabled = false;
         if (readyListenersBound) return;
         readyListenersBound = true;
         el('nor').addEventListener('change', () => updateDriverCheckbox());
@@ -416,6 +465,7 @@
         el('bidaiariakZerrenda').addEventListener('change', renderDriverSuggestion);
         el('bidaiForm').addEventListener('submit', submitTrip);
         el('personForm').addEventListener('submit', toggleAddPerson);
+        el('openingForm').addEventListener('submit', saveOpeningBalances);
         el('restoreDefaultsBtn').addEventListener('click', () => { const next = clone(state); restoreDefaults(next); persist(next); });
         el('cancelEditBtn').addEventListener('click', resetTripForm);
     }
@@ -423,7 +473,8 @@
         document.querySelectorAll('[data-screen-target]').forEach(button => {
             button.addEventListener('click', () => showScreen(button.dataset.screenTarget));
         });
-        el('exportBtn')?.addEventListener('click', exportState); el('importFile')?.addEventListener('change', importState); el('resetBtn')?.addEventListener('click', resetState);
+        el('exportBtn')?.addEventListener('click', exportState); el('importFile')?.addEventListener('change', importState); el('resetBtn')?.addEventListener('click', () => resetState(true));
+        el('resetToOpeningBtn').addEventListener('click', () => resetState(false));
         if (!storage) { readOnly = true; setStatus('Biltegiratzea ez dago erabilgarri. Datuak irakurtzeko moduan.', true); return; }
         const result = parseStored(storage); if (result.error) { readOnly = true; setStatus(result.error + ' Egin babeskopia edo inportatu fitxategi baliozko bat.', true); return; }
         state = result.state; if (result.migrated) { try { storage.setItem(STATE_KEY, JSON.stringify(state)); } catch (_) { readOnly = true; setStatus('Ezin izan da migrazioa gorde.', true); return; } }
