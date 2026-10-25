@@ -9,6 +9,10 @@ async page => {
     try {
         await page.evaluate(() => localStorage.removeItem('kotxeaEstado'));
         await page.reload();
+        await page.getByRole('button', { name: 'Historiala', exact: true }).click();
+        if (!(await page.locator('#historyFeedback').textContent()).includes('Oraindik ez dago bidaiarik')) {
+            throw new Error('Empty history message is missing.');
+        }
         await page.getByRole('button', { name: 'Bidaia', exact: true }).click();
         const date = page.getByLabel('Eguna:');
         const savedDialog = page.getByRole('dialog', { name: 'Bidaia gordeta!' });
@@ -17,6 +21,24 @@ async page => {
             if (!autoClose) await savedDialog.getByRole('button', { name: 'Ados' }).click();
             await savedDialog.waitFor({ state: 'hidden', timeout: 3500 });
         }
+        await page.getByRole('checkbox', { name: 'Leire', exact: true }).check();
+        await page.getByRole('checkbox', { name: 'Naroa', exact: true }).check();
+        await page.getByLabel('Nor da gidaria?').selectOption('leire');
+        for (const name of ['Nerea', 'Leire', 'Naroa']) {
+            if (!await page.getByRole('checkbox', { name, exact: true }).isChecked()) {
+                throw new Error('Changing the driver lost a participant: ' + name);
+            }
+        }
+        if (!await page.getByRole('checkbox', { name: 'Leire', exact: true }).isDisabled()) {
+            throw new Error('The new driver must remain a participant.');
+        }
+        const suggestion = await page.locator('#driverSuggestion').textContent();
+        if (!['Nerea', 'Leire', 'Naroa'].every(name => suggestion.includes(name))) {
+            throw new Error('The initial tied suggestion is missing participants.');
+        }
+        await page.getByLabel('Nor da gidaria?').selectOption('nerea');
+        await page.getByRole('checkbox', { name: 'Leire', exact: true }).uncheck();
+        await page.getByRole('checkbox', { name: 'Naroa', exact: true }).uncheck();
         for (const [index, value] of ['2026-10-28', '2026-10-29', '2026-10-25', '2026-01-01'].entries()) {
             await date.fill(value);
             if (!await date.evaluate(input => input.checkValidity())) {
@@ -42,6 +64,10 @@ async page => {
         if (await page.locator('#historialaBody tr').count() !== 3) {
             throw new Error('The default history must show recent and future trips.');
         }
+        const dates = await page.locator('#historialaBody tr td:first-child').allTextContents();
+        if (JSON.stringify(dates) !== JSON.stringify(['29/10/2026', '28/10/2026', '25/10/2026'])) {
+            throw new Error('History is not sorted by trip date: ' + dates.join(', '));
+        }
         await page.getByRole('row').filter({ hasText: '28/10/2026' }).getByRole('button', { name: 'Editatu' }).click();
         await date.fill('2026-11-02');
         await page.getByRole('button', { name: 'Aldaketak gorde', exact: true }).click();
@@ -57,6 +83,58 @@ async page => {
         if (await page.locator('#historialaBody tr').count() !== 4) throw new Error('Trips were lost after reload.');
         await page.getByLabel('Erakutsi:').selectOption('guztia');
         if (await page.locator('#historialaBody tr').count() !== 5) throw new Error('Full history lost old trips.');
+        await page.getByRole('row').filter({ hasText: '2/11/2026' }).getByRole('button', { name: 'Errepikatu' }).click();
+        if (await date.inputValue() !== '2026-10-25' || await page.locator('#editTripId').inputValue() !== '') {
+            throw new Error('Repeating must create a new draft dated today.');
+        }
+        if ((await readTrips()).length !== 5) throw new Error('Repeating saved before confirmation.');
+        if (!await page.getByRole('checkbox', { name: 'Leire', exact: true }).isChecked()) throw new Error('Repeat lost participants.');
+        await page.getByRole('button', { name: 'Utzi', exact: true }).click();
+        if ((await readTrips()).length !== 5) throw new Error('Canceling a repeat changed data.');
+        await page.getByRole('button', { name: 'Historiala', exact: true }).click();
+        await page.getByRole('row').filter({ hasText: '2/11/2026' }).getByRole('button', { name: 'Errepikatu' }).click();
+        await page.getByRole('button', { name: 'Bidai berria gehitu', exact: true }).click();
+        await confirmSaved();
+        const repeated = await readTrips();
+        if (repeated.length !== 6 || repeated[5].id === repeated[0].id || repeated[0].date !== '2026-11-02') {
+            throw new Error('Repeat did not preserve the source trip.');
+        }
+        await page.getByRole('button', { name: 'Historiala', exact: true }).click();
+        await page.getByLabel('Erakutsi:').selectOption('custom');
+        await page.getByLabel('Noiztik:').fill('2026-10-29');
+        await page.getByLabel('Noiz arte:').fill('2026-11-02');
+        await page.getByLabel('Pertsona:', { exact: true }).selectOption('leire');
+        if (await page.locator('#historialaBody tr').count() !== 2) throw new Error('Combined person/date filter failed.');
+        await page.getByLabel('Pertsona:', { exact: true }).selectOption('naroa');
+        if (!(await page.locator('#historyFeedback').textContent()).includes('Ez dago iragazki')) throw new Error('No-results message missing.');
+        if (await page.locator('#historyTable').isVisible()) throw new Error('Empty result table is still visible.');
+        await page.getByLabel('Pertsona:', { exact: true }).selectOption('leire');
+        await page.getByLabel('Noiz arte:').fill('2026-10-29');
+        if (await page.locator('#historialaBody tr').count() !== 1) throw new Error('Date limits are not inclusive.');
+        await page.getByLabel('Noiztik:').fill('');
+        if (await page.locator('#historialaBody tr').count() !== 4) throw new Error('Open-ended date range failed.');
+        await page.getByLabel('Noiztik:').fill('2026-11-03');
+        if (!(await page.locator('#historyFeedback').textContent()).includes('Data-tartea ez da baliozkoa')) throw new Error('Invalid range was not explained.');
+        await page.getByRole('button', { name: 'Iragazkiak garbitu' }).click();
+        if (await page.locator('#historialaBody tr').count() !== 6) throw new Error('Clearing filters did not restore all trips.');
+
+        await page.getByRole('button', { name: 'Taldea', exact: true }).click();
+        await page.getByRole('button', { name: 'Leire: Kendu', exact: true }).click();
+        await page.getByRole('button', { name: 'Historiala', exact: true }).click();
+        await page.getByLabel('Pertsona:', { exact: true }).selectOption('leire');
+        if (await page.locator('#historialaBody tr').count() !== 5) throw new Error('Archived person disappeared from history filters.');
+        await page.getByRole('row').filter({ hasText: '2/11/2026' }).getByRole('button', { name: 'Errepikatu' }).click();
+        if (await page.getByRole('checkbox', { name: 'Leire', exact: true }).count() !== 0) throw new Error('Repeat reactivated an archived person.');
+        if (!(await page.locator('#repeatTripNote').textContent()).includes('Artxibatutako pertsonak')) throw new Error('Repeat did not explain omitted people.');
+        await page.getByRole('button', { name: 'Utzi', exact: true }).click();
+        await page.getByRole('button', { name: 'Taldea', exact: true }).click();
+        await page.getByRole('button', { name: 'Leire: Berreskuratu', exact: true }).click();
+        await page.getByRole('button', { name: 'Nerea: Kendu', exact: true }).click();
+        await page.getByRole('button', { name: 'Historiala', exact: true }).click();
+        await page.getByRole('row').filter({ hasText: '2/11/2026' }).getByRole('button', { name: 'Errepikatu' }).click();
+        if (await page.getByLabel('Nor da gidaria?').inputValue() !== 'leire') throw new Error('Repeat retained an inactive driver.');
+        if ((await readTrips()).length !== 6) throw new Error('Reviewing archived repeats changed stored trips.');
+
     } finally {
         await page.evaluate(saved => {
             if (saved === null) localStorage.removeItem('kotxeaEstado');

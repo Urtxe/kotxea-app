@@ -122,3 +122,10 @@ Restaura los datos locales del navegador de prueba al finalizar.
 
 
 Este software se distribuye bajo AGPLv3. Para usos comerciales, contactar al autor para obtener licencia.
+
+Mejoras de uso:
+- El formulario propone a las personas activas seleccionadas con el menor balance; muestra los empates y no cambia el conductor automáticamente.
+- Cambiar el conductor conserva los pasajeros seleccionados e incluye automáticamente al nuevo conductor.
+- El historial se ordena por fecha del viaje, de más reciente a más antiguo; las ediciones actualizan su posición.
+- «Errepikatu» abre una copia del viaje con la fecha de hoy para revisarla antes de guardar. Excluye personas archivadas y avisa si debe revisarse el conductor.
+- El historial permite filtrar por participante (también archivado) y por fechas inclusivas, incluso con un solo límite. «Iragazkiak garbitu» muestra todo el historial. Distingue entre historial vacío, fechas incorrectas y ausencia de coincidencias.
