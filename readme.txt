@@ -4,8 +4,10 @@ Esta es una sencilla pero potente aplicación web de una sola página (SPA) dise
 
 El objetivo de la app es calcular un "balance" para que todos los miembros del grupo contribuyan de forma equitativa, ya sea conduciendo o siendo pasajero.
 
-La pantalla conserva la tabla y el formulario originales. Las cuatro personas
-iniciales siguen siendo Nerea, Leire, Naroa y Gorka.
+La interfaz comparte cuatro secciones en móvil y escritorio: Laburpena,
+Bidaia, Historiala y Taldea. El resumen muestra saldos con signo, color y
+explicación, y contadores desplegables. Las cuatro personas iniciales siguen
+siendo Nerea, Leire, Naroa y Gorka.
 
 ℹ️ ¿Cómo Funciona? (La Lógica)
 
@@ -41,7 +43,7 @@ pierden los registros, por lo que conviene exportar copias JSON regularmente.
 
 Formulario Simple: Permite añadir nuevos viajes de forma rápida seleccionando al conductor y los pasajeros.
 
-Botón de Reseteo: Incluye una función para borrar todos los datos (con confirmación) y empezar el conteo de cero.
+Reinicio: En Taldea, despliega «Bidaiak eta balantzeak berrezarri» para borrar los viajes y balances con confirmación, manteniendo las personas.
 
 Interfaz Limpia: Utiliza una paleta de colores corporativa (basada en Laboral Kutxa) para una visualización clara de los datos.
 
@@ -55,23 +57,23 @@ Marca las casillas de todas las personas que viajaron en el coche (incluyendo al
 
 Pulsa Bidai berria gehitu.
 
-La tabla se actualizará automáticamente con los nuevos cálculos.
+El resumen se actualizará automáticamente con los nuevos cálculos.
 
 Resetear el Conteo:
 
-Pulsa el botón Reset.
+En Taldea, despliega «Bidaiak eta balantzeak berrezarri» y pulsa «Bidaiak eta balantzeak ezabatu».
 
 Confirma la acción en la ventana emergente.
 
-Toda la tabla volverá a 0 y se borrará el historial, manteniendo las personas.
+Todos los balances volverán a 0 y se borrará el historial, manteniendo las personas.
 
 Personas y conductores:
 
-- Usa «Pertsona gehitu» debajo de la tabla. La nueva persona aparece también
+- Usa «Pertsona gehitu» en Taldea. La nueva persona aparece también
   en «Nor da gidaria?» y «Nortzuk joan dira?» del formulario BIDAI BERRIA.
 - Quitar una persona sin viajes la elimina. Si tiene viajes o saldo anterior,
   queda inactiva: se conserva su balance e historial y se puede reactivar
-  desde su fila, pero deja de aparecer al registrar viajes nuevos.
+  desde Taldea, pero deja de aparecer al registrar viajes nuevos.
 - «Hasierako lau pertsonak gehitu / aktibatu» recupera el grupo inicial sin
   borrar viajes ni otras personas.
 
@@ -80,7 +82,7 @@ Historial y copias de seguridad:
 - Se pueden editar y eliminar viajes; el resumen se recalcula al guardarlos.
 - El filtro de 30 días excluye fechas futuras. Los viajes nuevos no permiten
   fechas futuras; las fechas se inicializan con el día local del dispositivo.
-- En «Segurtasun-kopiak» puedes exportar JSON e importar una copia. Importar
+- En Taldea → «Segurtasun-kopiak» puedes exportar JSON e importar una copia. Importar
   sustituye los datos tras validarlos y pedir confirmación.
 - La actualización conserva las claves antiguas como copia de recuperación.
   Si existen totales anteriores al historial, se conservan como saldo inicial
