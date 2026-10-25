@@ -10,13 +10,83 @@ const {
     validateState,
     addPerson,
     removePerson,
-    restoreDefaults
+    restoreDefaults,
+    setOpeningBalances,
+    resetTrips
 } = require('./script.js');
 
 test('fresh state keeps the four original people and is valid', () => {
     const state = emptyState();
     assert.deepEqual(state.people.map(person => person.id), ['nerea', 'leire', 'naroa', 'gorka']);
     assert.equal(validateState(state), true);
+});
+
+test('Excel balances affect summaries and suggestions without inventing trips, and survive JSON backups', () => {
+    const original = emptyState();
+    const { state } = setOpeningBalances(original, { nerea: 2.5, leire: -1.25, naroa: -0.75, gorka: -0.5 });
+    assert.equal(calculateSummary(original).nerea.emaitza, 0);
+    assert.equal(state.trips.length, 0);
+    assert.equal(calculateSummary(state).nerea.gidatu, 0);
+    assert.equal(calculateSummary(state).nerea.bidaiak_guztira, 0);
+    assert.deepEqual(suggestDrivers(state, ['nerea', 'leire', 'naroa']).map(person => person.id), ['leire']);
+    state.trips.push({ id: 'new', date: '2026-10-25', driver: 'leire', passengers: ['nerea', 'leire'] });
+    assert.equal(calculateSummary(state).nerea.emaitza, 2);
+    assert.equal(calculateSummary(state).leire.emaitza, -0.75);
+    const restored = JSON.parse(JSON.stringify(state));
+    assert.equal(validateState(restored), true);
+    assert.deepEqual(calculateSummary(restored), calculateSummary(state));
+    const corrected = setOpeningBalances(state, { nerea: 3, leire: -1.25, naroa: -0.75, gorka: -0.5 }).state;
+    assert.deepEqual(corrected.trips, state.trips);
+    assert.equal(calculateSummary(corrected).nerea.emaitza, 2.5);
+    corrected.trips = [];
+    assert.equal(calculateSummary(corrected).nerea.emaitza, 3);
+});
+
+test('both reset modes preserve people, including archived members', () => {
+    const { state } = setOpeningBalances(emptyState(), { nerea: 2.5, leire: -2.5, naroa: 0, gorka: 0 });
+    state.trips.push({ id: 'new', date: '2026-10-25', driver: 'nerea', passengers: ['nerea', 'leire'] });
+    removePerson(state, 'leire');
+    assert.equal(state.people.find(person => person.id === 'leire').active, false);
+    const initial = resetTrips(state);
+    assert.equal(initial.trips.length, 0);
+    assert.equal(calculateSummary(initial).nerea.emaitza, 2.5);
+    assert.equal(calculateSummary(initial).leire.emaitza, -2.5);
+    assert.deepEqual(initial.people, state.people);
+    const zero = resetTrips(state, true);
+    assert.equal(zero.trips.length, 0);
+    for (const values of Object.values(calculateSummary(zero))) {
+        assert.deepEqual(values, { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0, emaitza: 0 });
+    }
+    assert.deepEqual(zero.people, state.people);
+    assert.equal(state.trips.length, 1);
+});
+
+test('opening balances validate atomically and invalid backups are rejected', () => {
+    const state = emptyState();
+    const original = JSON.stringify(state);
+    for (const invalid of [NaN, Infinity, null, '2', Number.MAX_VALUE, undefined]) {
+        assert.ok(setOpeningBalances(state, { nerea: 2, leire: invalid, naroa: 0, gorka: 0 }).error);
+        const bad = emptyState(); bad.opening.leire.balance = invalid;
+        assert.equal(validateState(bad), false);
+    }
+    assert.equal(JSON.stringify(state), original);
+});
+
+test('a person with only an opening balance is archived instead of losing their balance', () => {
+    const { state } = setOpeningBalances(emptyState(), { nerea: 2.5, leire: -2.5, naroa: 0, gorka: 0 });
+    assert.deepEqual(removePerson(state, 'leire'), { archived: true });
+    assert.equal(calculateSummary(state).leire.emaitza, -2.5);
+});
+
+test('editing migrated opening balances keeps legacy counters and does not double count the baseline', () => {
+    const state = emptyState();
+    state.opening.nerea = { gidatu: 3, bidaiak_guztira: 5, bidaiak_portzentaia: 1.5 };
+    assert.equal(calculateSummary(state).nerea.emaitza, 1.5);
+    const updated = setOpeningBalances(state, { nerea: -2.25, leire: 0, naroa: 0, gorka: 0 }).state;
+    assert.equal(calculateSummary(updated).nerea.emaitza, -2.25);
+    assert.equal(calculateSummary(updated).nerea.gidatu, 3);
+    assert.equal(calculateSummary(resetTrips(updated)).nerea.emaitza, -2.25);
+    assert.equal(calculateSummary(resetTrips(updated, true)).nerea.emaitza, 0);
 });
 
 test('summary distributes one trip proportionally, including the driver', () => {
