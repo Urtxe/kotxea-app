@@ -60,6 +60,10 @@ async page => {
         if (await page.locator('#historialaBody tr').count() !== 3) {
             throw new Error('The default history must show recent and future trips.');
         }
+        const dates = await page.locator('#historialaBody tr td:first-child').allTextContents();
+        if (JSON.stringify(dates) !== JSON.stringify(['29/10/2026', '28/10/2026', '25/10/2026'])) {
+            throw new Error('History is not sorted by trip date: ' + dates.join(', '));
+        }
         await page.getByRole('row').filter({ hasText: '28/10/2026' }).getByRole('button', { name: 'Editatu' }).click();
         await date.fill('2026-11-02');
         await page.getByRole('button', { name: 'Aldaketak gorde', exact: true }).click();
