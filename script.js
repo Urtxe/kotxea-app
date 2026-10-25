@@ -251,11 +251,18 @@
         updateDriverCheckbox(true);
     }
     function togglePerson(event) { if (readOnly) return; const next = clone(state); const person = next.people.find(item => item.id === event.currentTarget.dataset.personId); if (!person) return; if (person.active) removePerson(next, person.id); else person.active = true; persist(next); }
+    let tripSavedTimer;
+    function showTripSaved() {
+        const dialog = el('tripSavedDialog');
+        clearTimeout(tripSavedTimer);
+        if (!dialog.open) dialog.showModal();
+        tripSavedTimer = setTimeout(() => { if (dialog.open) dialog.close(); }, 2000);
+    }
     function submitTrip(event) {
         event.preventDefault(); if (readOnly) return; const date = el('bidaiaData').value; const driver = el('nor').value; const passengers = [...document.querySelectorAll('input[name="bidaiariak"]:checked')].map(input => input.value);
         const editId = tripIdField()?.value; if (!validDate(date)) { alert('Hautatu baliozko data bat.'); return; } if (!driver || passengers.length === 0 || !passengers.includes(driver)) { alert('Gidaria bidaiarien artean hautatu behar duzu.'); return; }
         const next = clone(state); if (editId) { const trip = next.trips.find(item => String(item.id) === String(editId)); if (!trip) return; trip.date = date; trip.driver = driver; trip.passengers = passengers; } else next.trips.push({ id: makeId(), date, driver, passengers });
-        if (persist(next)) resetTripForm();
+        if (persist(next)) { resetTripForm(); showTripSaved(); }
     }
     function editTrip(event) {
         const trip = state.trips.find(item => item.id === event.currentTarget.dataset.id);
