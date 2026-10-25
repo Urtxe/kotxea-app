@@ -4,7 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Kotxea</title>
-    <link rel="stylesheet" href="styles.css?v=2">
+    <meta name="theme-color" content="#c10072">
+    <link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body>
     <div class="app-shell">
@@ -14,7 +15,7 @@
             <p class="eyebrow">BIDAIAK PARTEKATUZ</p>
             <h1>Kotxea</h1>
         </div>
-        <span class="online-dot" title="Datuak gailu honetan gordetzen dira"></span>
+        <span class="storage-note">Datuak gailu honetan</span>
     </header>
     <main>
         <p id="startupWarning" role="alert">Datuak kargatzen. Mezu hau desagertzen ez bada, berritu orria: JavaScript behar da bidaiak kudeatzeko.</p>
@@ -22,36 +23,9 @@
         <section class="app-screen is-active" data-screen="summary" aria-labelledby="summaryTitle">
         <div class="screen-heading">
             <div><p class="eyebrow">ZURE TALDEA</p><h2 id="summaryTitle">Gidatze-balantzea</h2></div>
-            <span class="screen-caption">Egunean</span>
         </div>
-        <div class="table-scroll" role="region" aria-label="Bidaien laburpena" tabindex="0">
-            <table id="miTabla">
-                <caption class="sr-only">Pertsona bakoitzaren bidaien laburpena</caption>
-                <thead>
-                    <tr>
-                        <th scope="col">Pertsona</th>
-                        <th scope="col">Emaitza</th>
-                        <th scope="col">Bidaiak</th>
-                        <th scope="col">Kotxea BAI</th>
-                        <th scope="col">Kotxea EZ</th>
-                        <th scope="col">Ekintzak</th>
-                    </tr>
-                </thead>
-                <tbody id="laburpenaBody">
-                    <tr><td>Nerea</td><td id="emaitza-nerea">0.00</td><td id="bidaiak-guztira-nerea">0</td><td id="gidatu-nerea">0</td><td id="passenger-nerea">0</td><td>—</td></tr>
-                    <tr><td>Leire</td><td id="emaitza-leire">0.00</td><td id="bidaiak-guztira-leire">0</td><td id="gidatu-leire">0</td><td id="passenger-leire">0</td><td>—</td></tr>
-                    <tr><td>Naroa</td><td id="emaitza-naroa">0.00</td><td id="bidaiak-guztira-naroa">0</td><td id="gidatu-naroa">0</td><td id="passenger-naroa">0</td><td>—</td></tr>
-                    <tr><td>Gorka</td><td id="emaitza-gorka">0.00</td><td id="bidaiak-guztira-gorka">0</td><td id="gidatu-gorka">0</td><td id="passenger-gorka">0</td><td>—</td></tr>
-                </tbody>
-            </table>
-        </div>
-        <form id="personForm" class="person-tools">
-            <label for="personName">Pertsona berria:</label>
-            <input type="text" id="personName" name="personName" maxlength="80" required autocomplete="off" disabled>
-            <button type="submit" disabled>Pertsona gehitu</button>
-            <button type="button" id="restoreDefaultsBtn" disabled>Hasierako lau pertsonak gehitu / aktibatu</button>
-        </form>
-        <p class="help">Pertsona guztiek gidatu dezakete. Bidaia duen pertsona bat kentzean, haren historia eta balantzea gordetzen dira; ez da bidaia berrien aukeretan agertuko.</p>
+        <p class="screen-intro">Ikusi bakoitzaren balantzea. Zenbaki negatiboak gidatzea falta dela adierazten du.</p>
+        <ul id="balanceList" class="balance-list" aria-label="Pertsona bakoitzaren gidatze-balantzea"></ul>
         <details class="balance-help">
             <summary>Nola kalkulatzen da emaitza?</summary>
             <p>Emaitza = gidatutako bidaiak − bidaia bakoitzeko 1 / parte-hartzaile kopurua (gidaria barne). Positiboa: dagokiona baino gehiago gidatu du. Negatiboa: gidatzea falta zaio. Adibidez, lau pertsonako bidaian gidariak +0,75 eta besteek −0,25 jasotzen dute.</p>
@@ -60,11 +34,9 @@
 
         <section class="app-screen" data-screen="trip" aria-labelledby="tripFormTitle" hidden>
         <div class="screen-heading">
-            <div><p class="eyebrow">ERREGISTRATU</p><p class="screen-title">Bidaia berria</p></div>
-            <span class="screen-caption">1 min</span>
+            <div><p class="eyebrow">ERREGISTRATU</p><h2 id="tripFormTitle">Bidaia berria</h2></div>
         </div>
         <form id="bidaiForm">
-            <h2 id="tripFormTitle">BIDAI BERRIA</h2>
             <input type="hidden" id="editTripId">
             <fieldset id="formControls" disabled>
                 <legend class="sr-only">Bidaia erregistratu</legend>
@@ -92,7 +64,6 @@
                 <button type="button" id="cancelEditBtn" hidden>Utzi</button>
             </fieldset>
         </form>
-        <button type="button" id="resetBtn">Reset</button>
         </section>
 
         <section class="app-screen" data-screen="history" aria-labelledby="historyTitle" hidden>
@@ -113,12 +84,31 @@
                 <tbody id="historialaBody"></tbody>
             </table>
         </div>
-        <details class="backup-tools">
+        </section>
+
+        <section class="app-screen" data-screen="group" aria-labelledby="groupTitle" hidden>
+        <div class="screen-heading">
+            <div><p class="eyebrow">PERTSONAK ETA EZARPENAK</p><h2 id="groupTitle">Taldea</h2></div>
+        </div>
+        <ul id="groupList" class="group-list" aria-label="Taldeko pertsonak"></ul>
+        <p class="help">Pertsona guztiek gidatu dezakete. Bidaia duen pertsona bat kentzean, haren historia eta balantzea gordetzen dira; ez da bidaia berrien aukeretan agertuko.</p>
+        <form id="personForm" class="person-tools">
+            <label for="personName">Pertsona berria</label>
+            <input type="text" id="personName" name="personName" maxlength="80" required autocomplete="off" disabled>
+            <button type="submit" disabled>Pertsona gehitu</button>
+            <button type="button" id="restoreDefaultsBtn" class="secondary-button" disabled>Hasierako lau pertsonak gehitu / aktibatu</button>
+        </form>
+        <details class="backup-tools settings-panel">
             <summary>Segurtasun-kopiak</summary>
             <p>Datuak nabigatzaile honetan soilik gordetzen dira. Egin kopia bat gailuz aldatu edo nabigatzailearen datuak garbitu aurretik. Inportazioak uneko datuak ordezkatzen ditu.</p>
             <button type="button" id="exportBtn">JSON kopia deskargatu</button>
             <label for="importFile">JSON kopia inportatu:</label>
             <input type="file" id="importFile" accept=".json,application/json">
+        </details>
+        <details class="settings-panel reset-tools">
+            <summary>Bidaiak eta balantzeak berrezarri</summary>
+            <p>Ekintza honek bidaien historia eta balantze guztiak ezabatzen ditu. Taldeko pertsonak mantentzen dira. Egin segurtasun-kopia bat lehenik.</p>
+            <button type="button" id="resetBtn" class="danger-button">Bidaiak eta balantzeak ezabatu</button>
         </details>
         </section>
     </main>
@@ -130,8 +120,9 @@
         <button type="button" class="nav-item is-active" data-screen-target="summary" aria-current="page"><span aria-hidden="true">⌂</span>Laburpena</button>
         <button type="button" class="nav-item" data-screen-target="trip"><span aria-hidden="true">＋</span>Bidaia</button>
         <button type="button" class="nav-item" data-screen-target="history"><span aria-hidden="true">◷</span>Historiala</button>
+        <button type="button" class="nav-item" data-screen-target="group"><span aria-hidden="true">☷</span>Taldea</button>
     </nav>
     </div>
-    <script src="script.js?v=2"></script>
+    <script src="script.js?v=3"></script>
 </body>
 </html>

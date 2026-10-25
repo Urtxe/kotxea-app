@@ -132,11 +132,85 @@
         target.textContent = message || ''; target.hidden = !message;
         if (loadFailed && !el('startupWarning').hidden) el('startupWarning').textContent = 'Datuak ezin izan dira kargatu. Jarraitu beheko oharrari berreskuratzeko.';
     }
-    function formatNumber(value) { return Number(value.toFixed(2)).toString(); }
+    function formatNumber(value) {
+        const rounded = Number(value.toFixed(2));
+        return rounded.toLocaleString('eu-ES', { maximumFractionDigits: 2, signDisplay: 'exceptZero' });
+    }
     function renderSummary() {
-        if (!state) return; const summary = calculateSummary(state); const body = el('laburpenaBody');
-        if (body) { body.innerHTML = ''; state.people.forEach(person => { const row = body.insertRow(); row.dataset.personId = person.id; row.insertCell().textContent = person.name + (person.active ? '' : ' (artxibatua)'); const values = summary[person.id]; const resultCell = row.insertCell(); resultCell.id = 'emaitza-' + person.id; resultCell.textContent = formatNumber(values.emaitza); const totalCell = row.insertCell(); totalCell.id = 'bidaiak-guztira-' + person.id; totalCell.textContent = values.bidaiak_guztira; const driverCell = row.insertCell(); driverCell.id = 'gidatu-' + person.id; driverCell.textContent = values.gidatu; const passengerCell = row.insertCell(); passengerCell.id = 'passenger-' + person.id; passengerCell.textContent = values.bidaiak_guztira - values.gidatu; const actions = row.insertCell(); const button = document.createElement('button'); button.type = 'button'; button.textContent = person.active ? 'Kendu' : 'Berreskuratu'; button.dataset.personId = person.id; button.addEventListener('click', togglePerson); actions.appendChild(button); }); return; }
-        state.people.forEach(person => { const values = summary[person.id]; ['emaitza', 'bidaiak-guztira', 'gidatu', 'passenger'].forEach((key, index) => { const target = el(key + '-' + person.id); if (target) target.textContent = index === 0 ? formatNumber(values.emaitza) : String(index === 1 ? values.bidaiak_guztira : index === 2 ? values.gidatu : values.bidaiak_guztira - values.gidatu); }); });
+        if (!state) return;
+        const summary = calculateSummary(state);
+        const balances = el('balanceList');
+        const group = el('groupList');
+        balances.replaceChildren();
+        group.replaceChildren();
+        state.people.forEach(person => {
+            const values = summary[person.id];
+            const rounded = Number(values.emaitza.toFixed(2));
+            const card = document.createElement('li');
+            card.className = 'balance-card';
+            card.dataset.personId = person.id;
+            card.dataset.balance = rounded < 0 ? 'negative' : rounded > 0 ? 'positive' : 'balanced';
+            const heading = document.createElement('div');
+            heading.className = 'person-heading';
+            const name = document.createElement('h3');
+            name.textContent = person.name;
+            heading.append(name);
+            if (!person.active) {
+                const archived = document.createElement('span');
+                archived.className = 'archived-label';
+                archived.textContent = 'Artxibatua';
+                heading.append(archived);
+            }
+            const result = document.createElement('div');
+            result.className = 'balance-result';
+            const value = document.createElement('strong');
+            value.className = 'balance-value';
+            value.id = 'emaitza-' + person.id;
+            value.textContent = formatNumber(values.emaitza);
+            const label = document.createElement('span');
+            label.className = 'balance-label';
+            label.textContent = rounded < 0 ? 'Gidatzea falta zaio' : rounded > 0 ? 'Dagokiona baino gehiago gidatu du' : 'Orekan';
+            result.append(value, label);
+            const details = document.createElement('details');
+            const toggle = document.createElement('summary');
+            toggle.textContent = 'Bidaien xehetasunak';
+            const stats = document.createElement('dl');
+            stats.className = 'trip-stats';
+            [
+                ['Bidaiak guztira', 'bidaiak-guztira', values.bidaiak_guztira],
+                ['Gidatzen', 'gidatu', values.gidatu],
+                ['Bidaiari gisa', 'passenger', values.bidaiak_guztira - values.gidatu]
+            ].forEach(([text, id, count]) => {
+                const item = document.createElement('div');
+                const term = document.createElement('dt');
+                term.textContent = text;
+                const amount = document.createElement('dd');
+                amount.id = id + '-' + person.id;
+                amount.textContent = count;
+                item.append(term, amount);
+                stats.append(item);
+            });
+            details.append(toggle, stats);
+            card.append(heading, result, details);
+            balances.append(card);
+
+            const member = document.createElement('li');
+            const memberHeading = document.createElement('div');
+            memberHeading.className = 'person-heading';
+            const memberName = document.createElement('span');
+            memberName.textContent = person.name;
+            memberHeading.append(memberName);
+            if (!person.active) memberHeading.append(heading.querySelector('.archived-label').cloneNode(true));
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'secondary-button';
+            button.textContent = person.active ? 'Kendu' : 'Berreskuratu';
+            button.setAttribute('aria-label', person.name + ': ' + button.textContent);
+            button.dataset.personId = person.id;
+            button.addEventListener('click', togglePerson);
+            member.append(memberHeading, button);
+            group.append(member);
+        });
     }
     function tripIdField() { return el('editTripId') || el('hiddenEditTripId'); }
     function renderPeopleChoices(extraIds) {
@@ -153,7 +227,7 @@
     function updateDriverCheckbox(reset = false) { const driver = el('nor'); if (!driver) return; document.querySelectorAll('input[name="bidaiariak"]').forEach(checkbox => { if (reset) checkbox.checked = false; if (checkbox.value === driver.value) checkbox.checked = true; checkbox.disabled = checkbox.value === driver.value; }); }
     function renderHistory() {
         const body = el('historialaBody'); if (!body || !state) return; body.innerHTML = ''; const filter = el('historialEpea'); const cutoff = new Date(); cutoff.setHours(0, 0, 0, 0); cutoff.setDate(cutoff.getDate() - 30); const people = peopleMap(state.people);
-        state.trips.slice().reverse().filter(trip => !filter || filter.value !== '30' || (new Date(trip.date + 'T00:00:00') >= cutoff && trip.date <= todayString())).forEach(trip => { const row = body.insertRow(); row.insertCell().textContent = new Date(trip.date + 'T00:00:00').toLocaleDateString('es-ES'); row.insertCell().textContent = people.get(trip.driver)?.name || trip.driver; row.insertCell().textContent = trip.passengers.map(id => people.get(id)?.name || id).join(', '); const actions = row.insertCell(); const edit = document.createElement('button'); edit.type = 'button'; edit.textContent = 'Editatu'; edit.dataset.id = trip.id; edit.addEventListener('click', editTrip); const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Ezabatu'; remove.dataset.id = trip.id; remove.addEventListener('click', deleteTrip); actions.append(edit, remove); });
+        state.trips.slice().reverse().filter(trip => !filter || filter.value !== '30' || (new Date(trip.date + 'T00:00:00') >= cutoff && trip.date <= todayString())).forEach(trip => { const row = body.insertRow(); row.insertCell().textContent = new Date(trip.date + 'T00:00:00').toLocaleDateString('es-ES'); row.insertCell().textContent = people.get(trip.driver)?.name || trip.driver; row.insertCell().textContent = trip.passengers.map(id => people.get(id)?.name || id).join(', '); const actions = row.insertCell(); const edit = document.createElement('button'); edit.type = 'button'; edit.textContent = 'Editatu'; edit.dataset.id = trip.id; edit.addEventListener('click', editTrip); const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Ezabatu'; remove.dataset.id = trip.id; remove.addEventListener('click', deleteTrip); actions.append(edit, remove); [...row.cells].forEach((cell, index) => { cell.dataset.label = ['Data', 'Gidaria', 'Bidaiariak', 'Ekintzak'][index]; }); });
     }
     function renderAll() { renderSummary(); renderPeopleChoices(); renderHistory(); }
     function persist(nextState, recovery = false) {
@@ -170,7 +244,7 @@
         el('bidaiForm').reset();
         el('editTripId').value = '';
         el('cancelEditBtn').hidden = true;
-        el('tripFormTitle').textContent = 'BIDAI BERRIA';
+        el('tripFormTitle').textContent = 'Bidaia berria';
         el('saveTripBtn').textContent = 'Bidai berria gehitu';
         el('bidaiaData').value = todayString();
         el('bidaiaData').max = todayString();
@@ -192,7 +266,7 @@
         el('bidaiaData').value = trip.date;
         el('bidaiaData').max = trip.date > todayString() ? trip.date : todayString();
         el('nor').value = trip.driver; el('editTripId').value = trip.id;
-        el('cancelEditBtn').hidden = false; el('tripFormTitle').textContent = 'BIDAIA ALDATU';
+        el('cancelEditBtn').hidden = false; el('tripFormTitle').textContent = 'Bidaia aldatu';
         el('saveTripBtn').textContent = 'Aldaketak gorde';
         document.querySelectorAll('input[name="bidaiariak"]').forEach(input => { input.checked = trip.passengers.includes(input.value); });
         updateDriverCheckbox(); el('bidaiaData').focus();
