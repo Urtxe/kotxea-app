@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Kotxea</title>
     <meta name="theme-color" content="#c10072">
-    <link rel="stylesheet" href="styles.css?v=3">
+    <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
     <div class="app-shell">
@@ -40,7 +40,7 @@
             <input type="hidden" id="editTripId">
             <fieldset id="formControls" disabled>
                 <legend class="sr-only">Bidaia erregistratu</legend>
-                <div class="field"><label for="bidaiaData">Eguna:</label> <input type="date" id="bidaiaData" name="bidaiaData" required></div>
+                <div class="field"><label for="bidaiaData">Eguna:</label> <input type="date" id="bidaiaData" name="bidaiaData" aria-describedby="dateHelp" required><p id="dateHelp" class="help">Etorkizuneko bidaiak ere balantzean sartzen dira.</p></div>
                 <div class="field">
                     <label for="nor">Nor da gidaria?</label>
                     <select name="nor" id="nor" required>
@@ -73,7 +73,7 @@
         <div class="field">
             <label for="historialEpea">Erakutsi:</label>
             <select id="historialEpea">
-                <option value="30">Azken 30 egunak</option>
+                <option value="30">Azken 30 egunak eta hurrengoak</option>
                 <option value="guztia">Historial osoa</option>
             </select>
         </div>
@@ -123,6 +123,6 @@
         <button type="button" class="nav-item" data-screen-target="group"><span aria-hidden="true">☷</span>Taldea</button>
     </nav>
     </div>
-    <script src="script.js?v=3"></script>
+    <script src="script.js?v=4"></script>
 </body>
 </html>

@@ -45,7 +45,7 @@ Formulario Simple: Permite añadir nuevos viajes de forma rápida seleccionando 
 
 Reinicio: En Taldea, despliega «Bidaiak eta balantzeak berrezarri» para borrar los viajes y balances con confirmación, manteniendo las personas.
 
-Interfaz Limpia: Utiliza una paleta de colores corporativa (basada en Laboral Kutxa) para una visualización clara de los datos.
+Interfaz digital: Paneles oscuros con relieve, fondo espacial y acentos magenta y verde, con la misma navegación en móvil y escritorio.
 
 🚀 Cómo Usar
 
@@ -80,8 +80,10 @@ Personas y conductores:
 Historial y copias de seguridad:
 
 - Se pueden editar y eliminar viajes; el resumen se recalcula al guardarlos.
-- El filtro de 30 días excluye fechas futuras. Los viajes nuevos no permiten
-  fechas futuras; las fechas se inicializan con el día local del dispositivo.
+- Se permiten fechas pasadas y futuras al crear y editar viajes. Los viajes
+  futuros cuentan en el balance desde que se registran. El filtro inicial
+  muestra los últimos 30 días y los viajes futuros; el historial completo
+  permite consultar también los anteriores. La fecha inicial es el día local.
 - En Taldea → «Segurtasun-kopiak» puedes exportar JSON e importar una copia. Importar
   sustituye los datos tras validarlos y pedir confirmación.
 - La actualización conserva las claves antiguas como copia de recuperación.
@@ -102,6 +104,21 @@ Comprobaciones (Node.js, sin dependencias):
 
     node --check script.js
     node --test logic.test.js
+
+Comprobación del flujo de fechas en navegador (sin instalar dependencias en el proyecto):
+En una terminal, inicia la vista local:
+
+    python -m http.server 8765 --bind 127.0.0.1
+
+En otra terminal, desde la raíz del proyecto:
+
+    npx --yes --package @playwright/cli playwright-cli -s=kotxea-check open http://127.0.0.1:8765
+    npx --yes --package @playwright/cli playwright-cli -s=kotxea-check run-code --filename=checks/trip-flow.js
+    npx --yes --package @playwright/cli playwright-cli -s=kotxea-check close
+
+La comprobación fija el día en 25/10/2026 y verifica altas consecutivas,
+edición a una fecha posterior, validación, historial y persistencia al recargar.
+Restaura los datos locales del navegador de prueba al finalizar.
 
 
 Este software se distribuye bajo AGPLv3. Para usos comerciales, contactar al autor para obtener licencia.

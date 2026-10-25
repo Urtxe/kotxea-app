@@ -227,7 +227,7 @@
     function updateDriverCheckbox(reset = false) { const driver = el('nor'); if (!driver) return; document.querySelectorAll('input[name="bidaiariak"]').forEach(checkbox => { if (reset) checkbox.checked = false; if (checkbox.value === driver.value) checkbox.checked = true; checkbox.disabled = checkbox.value === driver.value; }); }
     function renderHistory() {
         const body = el('historialaBody'); if (!body || !state) return; body.innerHTML = ''; const filter = el('historialEpea'); const cutoff = new Date(); cutoff.setHours(0, 0, 0, 0); cutoff.setDate(cutoff.getDate() - 30); const people = peopleMap(state.people);
-        state.trips.slice().reverse().filter(trip => !filter || filter.value !== '30' || (new Date(trip.date + 'T00:00:00') >= cutoff && trip.date <= todayString())).forEach(trip => { const row = body.insertRow(); row.insertCell().textContent = new Date(trip.date + 'T00:00:00').toLocaleDateString('es-ES'); row.insertCell().textContent = people.get(trip.driver)?.name || trip.driver; row.insertCell().textContent = trip.passengers.map(id => people.get(id)?.name || id).join(', '); const actions = row.insertCell(); const edit = document.createElement('button'); edit.type = 'button'; edit.textContent = 'Editatu'; edit.dataset.id = trip.id; edit.addEventListener('click', editTrip); const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Ezabatu'; remove.dataset.id = trip.id; remove.addEventListener('click', deleteTrip); actions.append(edit, remove); [...row.cells].forEach((cell, index) => { cell.dataset.label = ['Data', 'Gidaria', 'Bidaiariak', 'Ekintzak'][index]; }); });
+        state.trips.slice().reverse().filter(trip => !filter || filter.value !== '30' || new Date(trip.date + 'T00:00:00') >= cutoff).forEach(trip => { const row = body.insertRow(); row.insertCell().textContent = new Date(trip.date + 'T00:00:00').toLocaleDateString('es-ES'); row.insertCell().textContent = people.get(trip.driver)?.name || trip.driver; row.insertCell().textContent = trip.passengers.map(id => people.get(id)?.name || id).join(', '); const actions = row.insertCell(); const edit = document.createElement('button'); edit.type = 'button'; edit.textContent = 'Editatu'; edit.dataset.id = trip.id; edit.addEventListener('click', editTrip); const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Ezabatu'; remove.dataset.id = trip.id; remove.addEventListener('click', deleteTrip); actions.append(edit, remove); [...row.cells].forEach((cell, index) => { cell.dataset.label = ['Data', 'Gidaria', 'Bidaiariak', 'Ekintzak'][index]; }); });
     }
     function renderAll() { renderSummary(); renderPeopleChoices(); renderHistory(); }
     function persist(nextState, recovery = false) {
@@ -247,14 +247,13 @@
         el('tripFormTitle').textContent = 'Bidaia berria';
         el('saveTripBtn').textContent = 'Bidai berria gehitu';
         el('bidaiaData').value = todayString();
-        el('bidaiaData').max = todayString();
         renderPeopleChoices();
         updateDriverCheckbox(true);
     }
     function togglePerson(event) { if (readOnly) return; const next = clone(state); const person = next.people.find(item => item.id === event.currentTarget.dataset.personId); if (!person) return; if (person.active) removePerson(next, person.id); else person.active = true; persist(next); }
     function submitTrip(event) {
         event.preventDefault(); if (readOnly) return; const date = el('bidaiaData').value; const driver = el('nor').value; const passengers = [...document.querySelectorAll('input[name="bidaiariak"]:checked')].map(input => input.value);
-        const editId = tripIdField()?.value; const currentTrip = editId && state.trips.find(item => String(item.id) === String(editId)); if (!validDate(date) || (date > todayString() && (!currentTrip || currentTrip.date !== date))) { alert('Ezin da etorkizuneko bidaia berririk sortu.'); return; } if (!driver || passengers.length === 0 || !passengers.includes(driver)) { alert('Gidaria bidaiarien artean hautatu behar duzu.'); return; }
+        const editId = tripIdField()?.value; if (!validDate(date)) { alert('Hautatu baliozko data bat.'); return; } if (!driver || passengers.length === 0 || !passengers.includes(driver)) { alert('Gidaria bidaiarien artean hautatu behar duzu.'); return; }
         const next = clone(state); if (editId) { const trip = next.trips.find(item => String(item.id) === String(editId)); if (!trip) return; trip.date = date; trip.driver = driver; trip.passengers = passengers; } else next.trips.push({ id: makeId(), date, driver, passengers });
         if (persist(next)) resetTripForm();
     }
@@ -264,7 +263,6 @@
         showScreen('trip');
         editingTripIds = trip.passengers.slice(); renderPeopleChoices(editingTripIds);
         el('bidaiaData').value = trip.date;
-        el('bidaiaData').max = trip.date > todayString() ? trip.date : todayString();
         el('nor').value = trip.driver; el('editTripId').value = trip.id;
         el('cancelEditBtn').hidden = false; el('tripFormTitle').textContent = 'Bidaia aldatu';
         el('saveTripBtn').textContent = 'Aldaketak gorde';
