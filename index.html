@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Kotxea</title>
     <meta name="theme-color" content="#c10072">
-    <link rel="stylesheet" href="styles.css?v=4">
+    <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
     <div class="app-shell">
@@ -123,6 +123,12 @@
         <button type="button" class="nav-item" data-screen-target="group"><span aria-hidden="true">☷</span>Taldea</button>
     </nav>
     </div>
-    <script src="script.js?v=4"></script>
+    <dialog id="tripSavedDialog" class="save-dialog" aria-labelledby="tripSavedTitle">
+        <span class="saved-check" aria-hidden="true">✓</span>
+        <h2 id="tripSavedTitle">Bidaia gordeta!</h2>
+        <p>Bidaia ondo gorde da.</p>
+        <form method="dialog"><button autofocus>Ados</button></form>
+    </dialog>
+    <script src="script.js?v=5"></script>
 </body>
 </html>
