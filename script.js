@@ -338,7 +338,7 @@
         el('personForm').querySelectorAll('button').forEach(button => { button.disabled = false; });
         if (readyListenersBound) return;
         readyListenersBound = true;
-        el('nor').addEventListener('change', () => updateDriverCheckbox(true));
+        el('nor').addEventListener('change', () => updateDriverCheckbox());
         el('historialEpea').addEventListener('change', renderHistory);
         el('bidaiariakZerrenda').addEventListener('change', renderDriverSuggestion);
         el('bidaiForm').addEventListener('submit', submitTrip);

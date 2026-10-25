@@ -125,3 +125,4 @@ Este software se distribuye bajo AGPLv3. Para usos comerciales, contactar al aut
 
 Mejoras de uso:
 - El formulario propone a las personas activas seleccionadas con el menor balance; muestra los empates y no cambia el conductor automáticamente.
+- Cambiar el conductor conserva los pasajeros seleccionados e incluye automáticamente al nuevo conductor.

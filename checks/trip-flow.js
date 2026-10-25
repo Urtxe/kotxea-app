@@ -17,6 +17,24 @@ async page => {
             if (!autoClose) await savedDialog.getByRole('button', { name: 'Ados' }).click();
             await savedDialog.waitFor({ state: 'hidden', timeout: 3500 });
         }
+        await page.getByRole('checkbox', { name: 'Leire', exact: true }).check();
+        await page.getByRole('checkbox', { name: 'Naroa', exact: true }).check();
+        await page.getByLabel('Nor da gidaria?').selectOption('leire');
+        for (const name of ['Nerea', 'Leire', 'Naroa']) {
+            if (!await page.getByRole('checkbox', { name, exact: true }).isChecked()) {
+                throw new Error('Changing the driver lost a participant: ' + name);
+            }
+        }
+        if (!await page.getByRole('checkbox', { name: 'Leire', exact: true }).isDisabled()) {
+            throw new Error('The new driver must remain a participant.');
+        }
+        const suggestion = await page.locator('#driverSuggestion').textContent();
+        if (!['Nerea', 'Leire', 'Naroa'].every(name => suggestion.includes(name))) {
+            throw new Error('The initial tied suggestion is missing participants.');
+        }
+        await page.getByLabel('Nor da gidaria?').selectOption('nerea');
+        await page.getByRole('checkbox', { name: 'Leire', exact: true }).uncheck();
+        await page.getByRole('checkbox', { name: 'Naroa', exact: true }).uncheck();
         for (const [index, value] of ['2026-10-28', '2026-10-29', '2026-10-25', '2026-01-01'].entries()) {
             await date.fill(value);
             if (!await date.evaluate(input => input.checkValidity())) {
