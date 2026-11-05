@@ -27,6 +27,22 @@
     function validDate(value) { if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false; const [year, month, day] = value.split('-').map(Number); const parsed = new Date(year, month - 1, day); return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day; }
     function number(value) { return typeof value === 'number' && Number.isFinite(value); }
     function emptyOpening() { return { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0 }; }
+    function openingBalance(opening) { return opening.gidatu - opening.bidaiak_portzentaia + (opening.balance ?? 0); }
+    function setOpeningBalances(state, balances) {
+        const next = clone(state);
+        for (const person of next.people) {
+            const value = balances[person.id];
+            if (!number(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) return { error: 'Pertsona bakoitzarentzat baliozko hasierako saldo bat sartu.' };
+            const opening = next.opening[person.id];
+            opening.balance = value - (opening.gidatu - opening.bidaiak_portzentaia);
+        }
+        return validateState(next) ? { state: next } : { error: 'Hasierako saldoak ez dira baliozkoak.' };
+    }
+    function resetTrips(state, clearOpening = false) {
+        const next = clone(state); next.trips = [];
+        if (clearOpening) next.people.forEach(person => { next.opening[person.id] = emptyOpening(); });
+        return next;
+    }
     function emptyState() {
         const state = { version: VERSION, people: clone(DEFAULT_PEOPLE), trips: [], opening: Object.create(null) };
         state.people.forEach(person => { state.opening[person.id] = emptyOpening(); }); return state;
@@ -47,6 +63,7 @@
             if (!validatePerson(person) || ids.has(person.id) || names.has(normalizedName)) return false; ids.add(person.id); names.add(normalizedName);
             if (!Object.prototype.hasOwnProperty.call(state.opening, person.id)) return false;
             const opening = state.opening[person.id]; if (!opening || !Number.isSafeInteger(opening.gidatu) || opening.gidatu < 0 || !Number.isSafeInteger(opening.bidaiak_guztira) || opening.bidaiak_guztira < 0 || opening.gidatu > opening.bidaiak_guztira || !number(opening.bidaiak_portzentaia) || opening.bidaiak_portzentaia < 0 || opening.bidaiak_portzentaia > opening.bidaiak_guztira) return false;
+            if (Object.prototype.hasOwnProperty.call(opening, 'balance') && (!number(opening.balance) || Math.abs(opening.balance) > Number.MAX_SAFE_INTEGER)) return false;
         }
         const people = peopleMap(state.people); return state.trips.every(trip => { if (!trip || !validateTrip(trip, people) || tripIds.has(trip.id)) return false; tripIds.add(trip.id); return true; });
     }
@@ -57,8 +74,16 @@
     }
     function calculateSummary(state) {
         const result = Object.create(null); const contributions = tripContribution(state);
-        state.people.forEach(person => { const opening = state.opening[person.id] || emptyOpening(); const trip = contributions[person.id]; const gidatu = opening.gidatu + trip.gidatu; const bidaiak = opening.bidaiak_guztira + trip.bidaiak_guztira; const participation = opening.bidaiak_portzentaia + trip.bidaiak_portzentaia; result[person.id] = { gidatu, bidaiak_guztira: bidaiak, bidaiak_portzentaia: participation, emaitza: gidatu - participation }; });
+        state.people.forEach(person => { const opening = state.opening[person.id] || emptyOpening(); const trip = contributions[person.id]; const gidatu = opening.gidatu + trip.gidatu; const bidaiak = opening.bidaiak_guztira + trip.bidaiak_guztira; const participation = opening.bidaiak_portzentaia + trip.bidaiak_portzentaia; result[person.id] = { gidatu, bidaiak_guztira: bidaiak, bidaiak_portzentaia: participation, emaitza: openingBalance(opening) + trip.gidatu - trip.bidaiak_portzentaia }; });
         return result;
+    }
+    function suggestDrivers(state, participantIds) {
+        const selected = new Set(participantIds);
+        const candidates = state.people.filter(person => person.active && selected.has(person.id));
+        if (candidates.length < 2) return [];
+        const summary = calculateSummary(state);
+        const lowest = Math.min(...candidates.map(person => summary[person.id].emaitza));
+        return candidates.filter(person => Math.abs(summary[person.id].emaitza - lowest) < 1e-9);
     }
     function normalizeLegacyTrip(trip, people) {
         if (!trip || (typeof trip.id !== 'string' && typeof trip.id !== 'number') || !validId(String(trip.id)) || !validDate(trip.data) || !validId(trip.gidaria) || !people.has(trip.gidaria) || !Array.isArray(trip.bidaiariak)) return null;
@@ -104,10 +129,10 @@
         const result = migrateLegacy(summaryRaw, historyRaw, stateRaw); if (result.state && !validateState(result.state)) return { error: 'Gordetako migrazioaren emaitza ez da baliozkoa.', raw: { stateRaw, summaryRaw, historyRaw } }; return result;
     }
     function addPerson(state, name) { const clean = String(name || '').trim(); if (!clean || clean.length > 80) return { error: 'Izena beharrezkoa da.' }; if (state.people.some(person => person.name.toLocaleLowerCase() === clean.toLocaleLowerCase())) return { error: 'Pertsona hori dagoeneko badago.' }; const person = { id: makeId(), name: clean, active: true, default: false }; state.people.push(person); state.opening[person.id] = emptyOpening(); return { person }; }
-    function removePerson(state, id) { const person = state.people.find(item => item.id === id); if (!person) return { error: 'Pertsona ez da aurkitu.' }; const opening = state.opening[id] || emptyOpening(); const used = state.trips.some(trip => trip.driver === id || trip.passengers.includes(id)) || opening.gidatu > 0 || opening.bidaiak_guztira > 0 || opening.bidaiak_portzentaia > 0; if (used) { person.active = false; return { archived: true }; } state.people = state.people.filter(item => item.id !== id); delete state.opening[id]; return { removed: true }; }
+    function removePerson(state, id) { const person = state.people.find(item => item.id === id); if (!person) return { error: 'Pertsona ez da aurkitu.' }; const opening = state.opening[id] || emptyOpening(); const used = state.trips.some(trip => trip.driver === id || trip.passengers.includes(id)) || opening.gidatu > 0 || opening.bidaiak_guztira > 0 || opening.bidaiak_portzentaia > 0 || (opening.balance ?? 0) !== 0; if (used) { person.active = false; return { archived: true }; } state.people = state.people.filter(item => item.id !== id); delete state.opening[id]; return { removed: true }; }
     function restoreDefaults(state) { DEFAULT_PEOPLE.forEach(defaultPerson => { const existing = state.people.find(person => person.id === defaultPerson.id || person.name.trim().toLocaleLowerCase() === defaultPerson.name.toLocaleLowerCase()); if (existing) existing.active = true; else { state.people.push(clone(defaultPerson)); state.opening[defaultPerson.id] = emptyOpening(); } }); }
 
-    const api = { VERSION, STATE_KEY, SUMMARY_KEY, HISTORY_KEY, DEFAULT_PEOPLE, emptyState, validateState, validateImport: validateState, calculateSummary, parseStored, migrateLegacy, addPerson, removePerson, restoreDefaults, todayString };
+    const api = { VERSION, STATE_KEY, SUMMARY_KEY, HISTORY_KEY, DEFAULT_PEOPLE, emptyState, validateState, validateImport: validateState, calculateSummary, suggestDrivers, parseStored, migrateLegacy, addPerson, removePerson, restoreDefaults, todayString, openingBalance, setOpeningBalances, resetTrips };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (typeof document === 'undefined') return;
 
@@ -132,11 +157,87 @@
         target.textContent = message || ''; target.hidden = !message;
         if (loadFailed && !el('startupWarning').hidden) el('startupWarning').textContent = 'Datuak ezin izan dira kargatu. Jarraitu beheko oharrari berreskuratzeko.';
     }
-    function formatNumber(value) { return Number(value.toFixed(2)).toString(); }
+    function formatNumber(value) {
+        const rounded = Number(value.toFixed(2));
+        return rounded.toLocaleString('eu-ES', { maximumFractionDigits: 2, signDisplay: 'exceptZero' });
+    }
     function renderSummary() {
-        if (!state) return; const summary = calculateSummary(state); const body = el('laburpenaBody');
-        if (body) { body.innerHTML = ''; state.people.forEach(person => { const row = body.insertRow(); row.dataset.personId = person.id; row.insertCell().textContent = person.name + (person.active ? '' : ' (artxibatua)'); const values = summary[person.id]; const resultCell = row.insertCell(); resultCell.id = 'emaitza-' + person.id; resultCell.textContent = formatNumber(values.emaitza); const totalCell = row.insertCell(); totalCell.id = 'bidaiak-guztira-' + person.id; totalCell.textContent = values.bidaiak_guztira; const driverCell = row.insertCell(); driverCell.id = 'gidatu-' + person.id; driverCell.textContent = values.gidatu; const passengerCell = row.insertCell(); passengerCell.id = 'passenger-' + person.id; passengerCell.textContent = values.bidaiak_guztira - values.gidatu; const actions = row.insertCell(); const button = document.createElement('button'); button.type = 'button'; button.textContent = person.active ? 'Kendu' : 'Berreskuratu'; button.dataset.personId = person.id; button.addEventListener('click', togglePerson); actions.appendChild(button); }); return; }
-        state.people.forEach(person => { const values = summary[person.id]; ['emaitza', 'bidaiak-guztira', 'gidatu', 'passenger'].forEach((key, index) => { const target = el(key + '-' + person.id); if (target) target.textContent = index === 0 ? formatNumber(values.emaitza) : String(index === 1 ? values.bidaiak_guztira : index === 2 ? values.gidatu : values.bidaiak_guztira - values.gidatu); }); });
+        if (!state) return;
+        const summary = calculateSummary(state);
+        const balances = el('balanceList');
+        const group = el('groupList');
+        balances.replaceChildren();
+        group.replaceChildren();
+        state.people.forEach(person => {
+            const values = summary[person.id];
+            const rounded = Number(values.emaitza.toFixed(2));
+            const card = document.createElement('li');
+            card.className = 'balance-card';
+            card.dataset.personId = person.id;
+            card.dataset.balance = rounded < 0 ? 'negative' : rounded > 0 ? 'positive' : 'balanced';
+            const heading = document.createElement('div');
+            heading.className = 'person-heading';
+            const name = document.createElement('h3');
+            name.textContent = person.name;
+            heading.append(name);
+            if (!person.active) {
+                const archived = document.createElement('span');
+                archived.className = 'archived-label';
+                archived.textContent = 'Artxibatua';
+                heading.append(archived);
+            }
+            const result = document.createElement('div');
+            result.className = 'balance-result';
+            const value = document.createElement('strong');
+            value.className = 'balance-value';
+            value.id = 'emaitza-' + person.id;
+            value.textContent = formatNumber(values.emaitza);
+            const label = document.createElement('span');
+            label.className = 'balance-label';
+            label.textContent = rounded < 0 ? 'Gidatzea falta zaio' : rounded > 0 ? 'Dagokiona baino gehiago gidatu du' : 'Orekan';
+            result.append(value, label);
+            const details = document.createElement('details');
+            const toggle = document.createElement('summary');
+            toggle.textContent = 'Bidaien xehetasunak';
+            const stats = document.createElement('dl');
+            stats.className = 'trip-stats';
+            [
+                ['Bidaiak guztira', 'bidaiak-guztira', values.bidaiak_guztira],
+                ['Gidatzen', 'gidatu', values.gidatu],
+                ['Bidaiari gisa', 'passenger', values.bidaiak_guztira - values.gidatu]
+            ].forEach(([text, id, count]) => {
+                const item = document.createElement('div');
+                const term = document.createElement('dt');
+                term.textContent = text;
+                const amount = document.createElement('dd');
+                amount.id = id + '-' + person.id;
+                amount.textContent = count;
+                item.append(term, amount);
+                stats.append(item);
+            });
+            const initial = document.createElement('p'); initial.className = 'help';
+            initial.textContent = 'Hasierako saldoa: ' + formatNumber(openingBalance(state.opening[person.id])) + '. Excel-eko saldoak ez du bidaia-kontagailurik gehitzen.';
+            details.append(toggle, initial, stats);
+            card.append(heading, result, details);
+            balances.append(card);
+
+            const member = document.createElement('li');
+            const memberHeading = document.createElement('div');
+            memberHeading.className = 'person-heading';
+            const memberName = document.createElement('span');
+            memberName.textContent = person.name;
+            memberHeading.append(memberName);
+            if (!person.active) memberHeading.append(heading.querySelector('.archived-label').cloneNode(true));
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'secondary-button';
+            button.textContent = person.active ? 'Kendu' : 'Berreskuratu';
+            button.setAttribute('aria-label', person.name + ': ' + button.textContent);
+            button.dataset.personId = person.id;
+            button.addEventListener('click', togglePerson);
+            member.append(memberHeading, button);
+            group.append(member);
+        });
     }
     function tripIdField() { return el('editTripId') || el('hiddenEditTripId'); }
     function renderPeopleChoices(extraIds) {
@@ -150,12 +251,105 @@
         el('formControls').disabled = readOnly || included.size === 0;
         if (included.size === 0) setStatus('Ez dago pertsona aktiborik; gehitu edo berreskuratu pertsona bat bidaia berriak sortzeko.');
     }
-    function updateDriverCheckbox(reset = false) { const driver = el('nor'); if (!driver) return; document.querySelectorAll('input[name="bidaiariak"]').forEach(checkbox => { if (reset) checkbox.checked = false; if (checkbox.value === driver.value) checkbox.checked = true; checkbox.disabled = checkbox.value === driver.value; }); }
-    function renderHistory() {
-        const body = el('historialaBody'); if (!body || !state) return; body.innerHTML = ''; const filter = el('historialEpea'); const cutoff = new Date(); cutoff.setHours(0, 0, 0, 0); cutoff.setDate(cutoff.getDate() - 30); const people = peopleMap(state.people);
-        state.trips.slice().reverse().filter(trip => !filter || filter.value !== '30' || (new Date(trip.date + 'T00:00:00') >= cutoff && trip.date <= todayString())).forEach(trip => { const row = body.insertRow(); row.insertCell().textContent = new Date(trip.date + 'T00:00:00').toLocaleDateString('es-ES'); row.insertCell().textContent = people.get(trip.driver)?.name || trip.driver; row.insertCell().textContent = trip.passengers.map(id => people.get(id)?.name || id).join(', '); const actions = row.insertCell(); const edit = document.createElement('button'); edit.type = 'button'; edit.textContent = 'Editatu'; edit.dataset.id = trip.id; edit.addEventListener('click', editTrip); const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Ezabatu'; remove.dataset.id = trip.id; remove.addEventListener('click', deleteTrip); actions.append(edit, remove); });
+    function renderDriverSuggestion() {
+        const target = el('driverSuggestion');
+        target.hidden = Boolean(el('editTripId').value);
+        if (target.hidden || !state) return;
+        const selected = [...document.querySelectorAll('input[name="bidaiariak"]:checked')].map(input => input.value);
+        const suggested = suggestDrivers(state, selected);
+        const summary = calculateSummary(state);
+        target.textContent = suggested.length
+            ? 'Gidatzeko proposamena: ' + suggested.map(person => person.name + ' (' + formatNumber(summary[person.id].emaitza) + ')').join(', ') + '. Balantzerik txikiena duten parte-hartzaile aktiboak.'
+            : 'Hautatu gutxienez bi pertsona gidatzeko proposamena ikusteko.';
     }
-    function renderAll() { renderSummary(); renderPeopleChoices(); renderHistory(); }
+    function updateDriverCheckbox(reset = false) { const driver = el('nor'); if (!driver) return; document.querySelectorAll('input[name="bidaiariak"]').forEach(checkbox => { if (reset) checkbox.checked = false; if (checkbox.value === driver.value) checkbox.checked = true; checkbox.disabled = checkbox.value === driver.value; }); renderDriverSuggestion(); }
+    function renderHistoryPeople() {
+        const select = el('historyPerson');
+        const selected = select.value;
+        select.replaceChildren(new Option('Pertsona guztiak', ''));
+        state.people.forEach(person => select.add(new Option(person.name + (person.active ? '' : ' (artxibatua)'), person.id)));
+        if (state.people.some(person => person.id === selected)) select.value = selected;
+    }
+    function renderHistory() {
+        const body = el('historialaBody');
+        if (!body || !state) return;
+        body.replaceChildren();
+        const period = el('historialEpea').value;
+        const person = el('historyPerson').value;
+        const from = el('historyFrom').value;
+        const to = el('historyTo').value;
+        const custom = period === 'custom';
+        el('historyDateRange').hidden = !custom;
+        const invalidRange = custom && ((from && !validDate(from)) || (to && !validDate(to)) || (from && to && from > to));
+        const cutoff = new Date();
+        cutoff.setHours(0, 0, 0, 0);
+        cutoff.setDate(cutoff.getDate() - 30);
+        const trips = invalidRange ? [] : state.trips.slice().reverse()
+            .sort((a, b) => b.date.localeCompare(a.date))
+            .filter(trip => (!person || trip.passengers.includes(person))
+                && (period !== '30' || new Date(trip.date + 'T00:00:00') >= cutoff)
+                && (!custom || ((!from || trip.date >= from) && (!to || trip.date <= to))));
+        const feedback = el('historyFeedback');
+        feedback.textContent = invalidRange ? 'Data-tartea ez da baliozkoa. Hasiera amaiera baino lehenagokoa edo egun berekoa izan behar da.'
+            : state.trips.length === 0 ? 'Oraindik ez dago bidaiarik. Gehitu lehen bidaia Bidaia atalean.'
+            : trips.length === 0 ? 'Ez dago iragazki horiekin bat datorren bidaiarik. Aldatu edo garbitu iragazkiak.'
+            : trips.length + ' bidaia aurkitu dira.';
+        feedback.classList.toggle('empty-state', trips.length === 0);
+        el('historyTable').hidden = trips.length === 0;
+        const people = peopleMap(state.people);
+        trips.forEach(trip => {
+            const row = body.insertRow();
+            [
+                ['Data', new Date(trip.date + 'T00:00:00').toLocaleDateString('es-ES')],
+                ['Gidaria', people.get(trip.driver)?.name || trip.driver],
+                ['Bidaiariak', trip.passengers.map(id => people.get(id)?.name || id).join(', ')]
+            ].forEach(([label, text]) => {
+                const cell = row.insertCell();
+                cell.dataset.label = label;
+                cell.textContent = text;
+            });
+            const actions = row.insertCell();
+            actions.dataset.label = 'Ekintzak';
+            [
+                ['Errepikatu', event => editTrip(event, true)],
+                ['Editatu', editTrip],
+                ['Ezabatu', deleteTrip]
+            ].forEach(([label, handler]) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = label;
+                button.dataset.id = trip.id;
+                button.addEventListener('click', handler);
+                actions.append(button);
+            });
+        });
+    }
+    function renderOpeningBalances() {
+        const container = el('openingBalances'); container.replaceChildren();
+        state.people.forEach(person => {
+            const field = document.createElement('div'); field.className = 'field';
+            const label = document.createElement('label'); label.htmlFor = 'opening-' + person.id;
+            label.textContent = person.name + (person.active ? '' : ' (artxibatua)');
+            const input = document.createElement('input'); input.id = label.htmlFor;
+            input.type = 'text'; input.inputMode = 'decimal'; input.required = true;
+            input.dataset.personId = person.id; input.value = String(openingBalance(state.opening[person.id])).replace('.', ',');
+            input.setAttribute('aria-describedby', 'openingHelp');
+            field.append(label, input); container.append(field);
+        });
+    }
+    function saveOpeningBalances(event) {
+        event.preventDefault(); if (readOnly) return;
+        const balances = Object.create(null);
+        for (const input of el('openingBalances').querySelectorAll('input')) {
+            const value = input.value.trim().replace(',', '.');
+            if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) { setStatus('Sartu baliozko zenbaki bat; adibidez: -1,25.'); input.focus(); return; }
+            balances[input.dataset.personId] = Number(value);
+        }
+        const result = setOpeningBalances(state, balances);
+        if (result.error) { setStatus(result.error); return; }
+        persist(result.state);
+    }
+    function renderAll() { renderSummary(); renderPeopleChoices(); renderHistoryPeople(); renderHistory(); renderOpeningBalances(); }
     function persist(nextState, recovery = false) {
         if ((!recovery && readOnly) || !validateState(nextState)) { setStatus('Datuak ez dira baliozkoak edo ezin dira aldatu.'); return false; }
         // ponytail: detects stale tabs; simultaneous writers still need Web Locks or IndexedDB.
@@ -167,34 +361,46 @@
     }
     function resetTripForm() {
         editingTripIds = [];
+        el('repeatTripNote').hidden = true;
         el('bidaiForm').reset();
         el('editTripId').value = '';
         el('cancelEditBtn').hidden = true;
-        el('tripFormTitle').textContent = 'BIDAI BERRIA';
+        el('tripFormTitle').textContent = 'Bidaia berria';
         el('saveTripBtn').textContent = 'Bidai berria gehitu';
         el('bidaiaData').value = todayString();
-        el('bidaiaData').max = todayString();
         renderPeopleChoices();
         updateDriverCheckbox(true);
     }
     function togglePerson(event) { if (readOnly) return; const next = clone(state); const person = next.people.find(item => item.id === event.currentTarget.dataset.personId); if (!person) return; if (person.active) removePerson(next, person.id); else person.active = true; persist(next); }
+    let tripSavedTimer;
+    function showTripSaved() {
+        const dialog = el('tripSavedDialog');
+        clearTimeout(tripSavedTimer);
+        if (!dialog.open) dialog.showModal();
+        tripSavedTimer = setTimeout(() => { if (dialog.open) dialog.close(); }, 2000);
+    }
     function submitTrip(event) {
         event.preventDefault(); if (readOnly) return; const date = el('bidaiaData').value; const driver = el('nor').value; const passengers = [...document.querySelectorAll('input[name="bidaiariak"]:checked')].map(input => input.value);
-        const editId = tripIdField()?.value; const currentTrip = editId && state.trips.find(item => String(item.id) === String(editId)); if (!validDate(date) || (date > todayString() && (!currentTrip || currentTrip.date !== date))) { alert('Ezin da etorkizuneko bidaia berririk sortu.'); return; } if (!driver || passengers.length === 0 || !passengers.includes(driver)) { alert('Gidaria bidaiarien artean hautatu behar duzu.'); return; }
+        const editId = tripIdField()?.value; if (!validDate(date)) { alert('Hautatu baliozko data bat.'); return; } if (!driver || passengers.length === 0 || !passengers.includes(driver)) { alert('Gidaria bidaiarien artean hautatu behar duzu.'); return; }
         const next = clone(state); if (editId) { const trip = next.trips.find(item => String(item.id) === String(editId)); if (!trip) return; trip.date = date; trip.driver = driver; trip.passengers = passengers; } else next.trips.push({ id: makeId(), date, driver, passengers });
-        if (persist(next)) resetTripForm();
+        if (persist(next)) { resetTripForm(); showTripSaved(); }
     }
-    function editTrip(event) {
+    function editTrip(event, repeat = false) {
         const trip = state.trips.find(item => item.id === event.currentTarget.dataset.id);
-        if (!trip) return;
+        if (!trip || readOnly) return;
+        const participants = repeat ? trip.passengers.filter(id => state.people.some(person => person.id === id && person.active)) : trip.passengers;
+        if (participants.length === 0) { setStatus('Bidaia honetako pertsona guztiak artxibatuta daude. Aktibatu pertsona bat Taldea atalean.'); return; }
         showScreen('trip');
-        editingTripIds = trip.passengers.slice(); renderPeopleChoices(editingTripIds);
-        el('bidaiaData').value = trip.date;
-        el('bidaiaData').max = trip.date > todayString() ? trip.date : todayString();
-        el('nor').value = trip.driver; el('editTripId').value = trip.id;
-        el('cancelEditBtn').hidden = false; el('tripFormTitle').textContent = 'BIDAIA ALDATU';
-        el('saveTripBtn').textContent = 'Aldaketak gorde';
-        document.querySelectorAll('input[name="bidaiariak"]').forEach(input => { input.checked = trip.passengers.includes(input.value); });
+        editingTripIds = repeat ? [] : participants.slice(); renderPeopleChoices(editingTripIds);
+        el('bidaiaData').value = repeat ? todayString() : trip.date;
+        el('nor').value = participants.includes(trip.driver) ? trip.driver : participants[0];
+        el('editTripId').value = repeat ? '' : trip.id;
+        el('cancelEditBtn').hidden = false;
+        el('tripFormTitle').textContent = repeat ? 'Bidaia errepikatu' : 'Bidaia aldatu';
+        el('saveTripBtn').textContent = repeat ? 'Bidai berria gehitu' : 'Aldaketak gorde';
+        el('repeatTripNote').hidden = !repeat;
+        el('repeatTripNote').textContent = 'Gaurko kopia prest dago. Egiaztatu data, gidaria eta parte-hartzaileak gorde aurretik.' + (participants.length < trip.passengers.length ? ' Artxibatutako pertsonak ez dira sartu; egiaztatu gidaria ere.' : '');
+        document.querySelectorAll('input[name="bidaiariak"]').forEach(input => { input.checked = participants.includes(input.value); });
         updateDriverCheckbox(); el('bidaiaData').focus();
     }
     function deleteTrip(event) {
@@ -228,30 +434,62 @@
         link.download = 'kotxea-' + todayString() + '.json';
         link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     }
-    function resetState() {
-        if (!confirm('Ziur zaude bidaien historia eta kontagailuak berrezarri nahi dituzula?')) return;
-        const next = state ? clone(state) : emptyState(); next.trips = [];
-        next.people.forEach(person => { next.opening[person.id] = emptyOpening(); });
+    function resetState(clearOpening = true) {
+        if (!clearOpening && (readOnly || !state)) return;
+        const message = clearOpening
+            ? 'Bidaia guztiak eta hasierako saldoak ezabatuko dira. Denak zerotik hasiko dira. Pertsonak mantenduko dira. Jarraitu?'
+            : 'Aplikazioan erregistratutako bidaia guztiak ezabatuko dira eta hasierako saldoetara itzuliko zara. Pertsonak mantenduko dira. Jarraitu?';
+        if (!confirm(message)) return;
+        const next = resetTrips(state || emptyState(), clearOpening);
         if (persist(next, readOnly)) { el('startupWarning').hidden = true; bindReadyListeners(); resetTripForm(); }
     }
     let readyListenersBound = false;
     function bindReadyListeners() {
         el('personName').disabled = false;
         el('personForm').querySelectorAll('button').forEach(button => { button.disabled = false; });
+        el('openingControls').disabled = false;
+        el('resetToOpeningBtn').disabled = false;
         if (readyListenersBound) return;
         readyListenersBound = true;
-        el('nor').addEventListener('change', () => updateDriverCheckbox(true));
+        el('nor').addEventListener('change', () => updateDriverCheckbox());
         el('historialEpea').addEventListener('change', renderHistory);
+        el('historyPerson').addEventListener('change', renderHistory);
+        ['historyFrom', 'historyTo'].forEach(id => el(id).addEventListener('input', renderHistory));
+        el('clearHistoryFilters').addEventListener('click', () => {
+            el('historialEpea').value = 'guztia';
+            el('historyPerson').value = '';
+            el('historyFrom').value = '';
+            el('historyTo').value = '';
+            renderHistory();
+        });
+        el('bidaiariakZerrenda').addEventListener('change', renderDriverSuggestion);
         el('bidaiForm').addEventListener('submit', submitTrip);
         el('personForm').addEventListener('submit', toggleAddPerson);
+        el('openingForm').addEventListener('submit', saveOpeningBalances);
         el('restoreDefaultsBtn').addEventListener('click', () => { const next = clone(state); restoreDefaults(next); persist(next); });
         el('cancelEditBtn').addEventListener('click', resetTripForm);
     }
     function setup() {
+        const themeToggle = el('themeToggle');
+        function applyTheme(theme) {
+            const isLight = theme === 'light';
+            document.documentElement.dataset.theme = isLight ? 'light' : 'dark';
+            themeToggle.setAttribute('aria-label', isLight ? 'Gai ilunera aldatu' : 'Gai argira aldatu');
+            themeToggle.setAttribute('title', isLight ? 'Gai ilunera aldatu' : 'Gai argira aldatu');
+            themeToggle.setAttribute('aria-pressed', String(isLight));
+            el('themeIcon').textContent = isLight ? '☾' : '☀';
+        }
+        applyTheme(document.documentElement.dataset.theme);
+        themeToggle.addEventListener('click', () => {
+            const nextTheme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+            applyTheme(nextTheme);
+            try { localStorage.setItem('kotxea-theme', nextTheme); } catch (_) {}
+        });
         document.querySelectorAll('[data-screen-target]').forEach(button => {
             button.addEventListener('click', () => showScreen(button.dataset.screenTarget));
         });
-        el('exportBtn')?.addEventListener('click', exportState); el('importFile')?.addEventListener('change', importState); el('resetBtn')?.addEventListener('click', resetState);
+        el('exportBtn')?.addEventListener('click', exportState); el('importFile')?.addEventListener('change', importState); el('resetBtn')?.addEventListener('click', () => resetState(true));
+        el('resetToOpeningBtn').addEventListener('click', () => resetState(false));
         if (!storage) { readOnly = true; setStatus('Biltegiratzea ez dago erabilgarri. Datuak irakurtzeko moduan.', true); return; }
         const result = parseStored(storage); if (result.error) { readOnly = true; setStatus(result.error + ' Egin babeskopia edo inportatu fitxategi baliozko bat.', true); return; }
         state = result.state; if (result.migrated) { try { storage.setItem(STATE_KEY, JSON.stringify(state)); } catch (_) { readOnly = true; setStatus('Ezin izan da migrazioa gorde.', true); return; } }

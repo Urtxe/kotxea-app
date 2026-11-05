@@ -4,8 +4,10 @@ Esta es una sencilla pero potente aplicación web de una sola página (SPA) dise
 
 El objetivo de la app es calcular un "balance" para que todos los miembros del grupo contribuyan de forma equitativa, ya sea conduciendo o siendo pasajero.
 
-La pantalla conserva la tabla y el formulario originales. Las cuatro personas
-iniciales siguen siendo Nerea, Leire, Naroa y Gorka.
+La interfaz comparte cuatro secciones en móvil y escritorio: Laburpena,
+Bidaia, Historiala y Taldea. El resumen muestra saldos con signo, color y
+explicación, y contadores desplegables. Las cuatro personas iniciales siguen
+siendo Nerea, Leire, Naroa y Gorka.
 
 ℹ️ ¿Cómo Funciona? (La Lógica)
 
@@ -41,9 +43,9 @@ pierden los registros, por lo que conviene exportar copias JSON regularmente.
 
 Formulario Simple: Permite añadir nuevos viajes de forma rápida seleccionando al conductor y los pasajeros.
 
-Botón de Reseteo: Incluye una función para borrar todos los datos (con confirmación) y empezar el conteo de cero.
+Reinicio: En Taldea, despliega «Bidaiak eta balantzeak berrezarri» para borrar los viajes y balances con confirmación, manteniendo las personas.
 
-Interfaz Limpia: Utiliza una paleta de colores corporativa (basada en Laboral Kutxa) para una visualización clara de los datos.
+Interfaz digital: Paneles oscuros con relieve, fondo espacial y acentos magenta y verde, con la misma navegación en móvil y escritorio.
 
 🚀 Cómo Usar
 
@@ -55,32 +57,34 @@ Marca las casillas de todas las personas que viajaron en el coche (incluyendo al
 
 Pulsa Bidai berria gehitu.
 
-La tabla se actualizará automáticamente con los nuevos cálculos.
+El resumen se actualizará automáticamente con los nuevos cálculos.
 
 Resetear el Conteo:
 
-Pulsa el botón Reset.
+En Taldea, despliega «Bidaiak eta balantzeak berrezarri» y pulsa «Bidaiak eta balantzeak ezabatu».
 
 Confirma la acción en la ventana emergente.
 
-Toda la tabla volverá a 0 y se borrará el historial, manteniendo las personas.
+Todos los balances volverán a 0 y se borrará el historial, manteniendo las personas.
 
 Personas y conductores:
 
-- Usa «Pertsona gehitu» debajo de la tabla. La nueva persona aparece también
+- Usa «Pertsona gehitu» en Taldea. La nueva persona aparece también
   en «Nor da gidaria?» y «Nortzuk joan dira?» del formulario BIDAI BERRIA.
 - Quitar una persona sin viajes la elimina. Si tiene viajes o saldo anterior,
   queda inactiva: se conserva su balance e historial y se puede reactivar
-  desde su fila, pero deja de aparecer al registrar viajes nuevos.
+  desde Taldea, pero deja de aparecer al registrar viajes nuevos.
 - «Hasierako lau pertsonak gehitu / aktibatu» recupera el grupo inicial sin
   borrar viajes ni otras personas.
 
 Historial y copias de seguridad:
 
 - Se pueden editar y eliminar viajes; el resumen se recalcula al guardarlos.
-- El filtro de 30 días excluye fechas futuras. Los viajes nuevos no permiten
-  fechas futuras; las fechas se inicializan con el día local del dispositivo.
-- En «Segurtasun-kopiak» puedes exportar JSON e importar una copia. Importar
+- Se permiten fechas pasadas y futuras al crear y editar viajes. Los viajes
+  futuros cuentan en el balance desde que se registran. El filtro inicial
+  muestra los últimos 30 días y los viajes futuros; el historial completo
+  permite consultar también los anteriores. La fecha inicial es el día local.
+- En Taldea → «Segurtasun-kopiak» puedes exportar JSON e importar una copia. Importar
   sustituye los datos tras validarlos y pedir confirmación.
 - La actualización conserva las claves antiguas como copia de recuperación.
   Si existen totales anteriores al historial, se conservan como saldo inicial
@@ -101,5 +105,27 @@ Comprobaciones (Node.js, sin dependencias):
     node --check script.js
     node --test logic.test.js
 
+Comprobación del flujo de fechas en navegador (sin instalar dependencias en el proyecto):
+En una terminal, inicia la vista local:
+
+    python -m http.server 8765 --bind 127.0.0.1
+
+En otra terminal, desde la raíz del proyecto:
+
+    npx --yes --package @playwright/cli playwright-cli -s=kotxea-check open http://127.0.0.1:8765
+    npx --yes --package @playwright/cli playwright-cli -s=kotxea-check run-code --filename=checks/trip-flow.js
+    npx --yes --package @playwright/cli playwright-cli -s=kotxea-check close
+
+La comprobación fija el día en 25/10/2026 y verifica altas consecutivas,
+edición a una fecha posterior, validación, historial y persistencia al recargar.
+Restaura los datos locales del navegador de prueba al finalizar.
+
 
 Este software se distribuye bajo AGPLv3. Para usos comerciales, contactar al autor para obtener licencia.
+
+Mejoras de uso:
+- El formulario propone a las personas activas seleccionadas con el menor balance; muestra los empates y no cambia el conductor automáticamente.
+- Cambiar el conductor conserva los pasajeros seleccionados e incluye automáticamente al nuevo conductor.
+- El historial se ordena por fecha del viaje, de más reciente a más antiguo; las ediciones actualizan su posición.
+- «Errepikatu» abre una copia del viaje con la fecha de hoy para revisarla antes de guardar. Excluye personas archivadas y avisa si debe revisarse el conductor.
+- El historial permite filtrar por participante (también archivado) y por fechas inclusivas, incluso con un solo límite. «Iragazkiak garbitu» muestra todo el historial. Distingue entre historial vacío, fechas incorrectas y ausencia de coincidencias.
