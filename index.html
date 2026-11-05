@@ -5,7 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Kotxea</title>
     <meta name="theme-color" content="#c10072">
-    <link rel="stylesheet" href="styles.css?v=7">
+    <script>
+        try {
+            const theme = localStorage.getItem('kotxea-theme');
+            if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+        } catch (_) {}
+    </script>
+    <link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
     <div class="app-shell">
@@ -16,6 +22,9 @@
             <h1>Kotxea</h1>
         </div>
         <span class="storage-note">Datuak gailu honetan</span>
+        <button type="button" id="themeToggle" class="theme-toggle" aria-label="Gai argira aldatu" aria-pressed="false" title="Gai argira aldatu">
+            <span id="themeIcon" aria-hidden="true">☀</span>
+        </button>
     </header>
     <main>
         <p id="startupWarning" role="alert">Datuak kargatzen. Mezu hau desagertzen ez bada, berritu orria: JavaScript behar da bidaiak kudeatzeko.</p>
@@ -158,6 +167,6 @@
         <p>Bidaia ondo gorde da.</p>
         <form method="dialog"><button autofocus>Ados</button></form>
     </dialog>
-    <script src="script.js?v=7"></script>
+    <script src="script.js?v=8"></script>
 </body>
 </html>

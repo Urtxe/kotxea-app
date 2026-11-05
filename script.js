@@ -470,6 +470,21 @@
         el('cancelEditBtn').addEventListener('click', resetTripForm);
     }
     function setup() {
+        const themeToggle = el('themeToggle');
+        function applyTheme(theme) {
+            const isLight = theme === 'light';
+            document.documentElement.dataset.theme = isLight ? 'light' : 'dark';
+            themeToggle.setAttribute('aria-label', isLight ? 'Gai ilunera aldatu' : 'Gai argira aldatu');
+            themeToggle.setAttribute('title', isLight ? 'Gai ilunera aldatu' : 'Gai argira aldatu');
+            themeToggle.setAttribute('aria-pressed', String(isLight));
+            el('themeIcon').textContent = isLight ? '☾' : '☀';
+        }
+        applyTheme(document.documentElement.dataset.theme);
+        themeToggle.addEventListener('click', () => {
+            const nextTheme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+            applyTheme(nextTheme);
+            try { localStorage.setItem('kotxea-theme', nextTheme); } catch (_) {}
+        });
         document.querySelectorAll('[data-screen-target]').forEach(button => {
             button.addEventListener('click', () => showScreen(button.dataset.screenTarget));
         });
