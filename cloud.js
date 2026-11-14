@@ -783,6 +783,13 @@
     function verificationRequired(user) {
         return Boolean(user && user.providerData && user.providerData.some(provider => provider.providerId === 'password') && !user.emailVerified);
     }
+    function showProfileLoadError(error) {
+        console.error('Kotxea auth initialization failed', error);
+        setGate('groups');
+        el('groupsFeedback').textContent = 'Ezin izan dira kontuaren datuak kargatu: ' + safeError(error) + ' Saiatu berriro edo itxi saioa.';
+        el('bootstrapHelp').hidden = true;
+        el('refreshRoleBtn').hidden = false;
+    }
     async function loadProfileAndGate() {
         if (!user) { activeGroup = null; activeMember = null; setGate('authPanel'); el('resendVerificationBtn').hidden = true; el('verifiedContinueBtn').hidden = true; return; }
         el('accountMenuBtn').textContent = user.displayName || user.email || 'Kontua';
@@ -794,6 +801,10 @@
             return;
         }
         el('authTitle').textContent = 'Sartu Kotxean';
+        setGate('groups');
+        el('groupsFeedback').textContent = 'Kontuaren datuak kargatzen…';
+        el('bootstrapHelp').hidden = true;
+        el('refreshRoleBtn').hidden = false;
         const profileRef = db.collection('users').doc(user.uid);
         const profile = await profileRef.get();
         if (!profile.exists) {
@@ -822,7 +833,7 @@
             user = authUser;
             if (!authUser) { platformRole = null; await loadProfileAndGate(); return; }
             try { await loadProfileAndGate(); }
-            catch (error) { console.error('Kotxea auth initialization failed', error); updateAuthFeedback('Ezin izan dira kontuaren datuak kargatu: ' + safeError(error)); setGate('authPanel'); }
+            catch (error) { showProfileLoadError(error); }
         });
 
         el('authForm').addEventListener('submit', handleAuthSubmit);
@@ -831,7 +842,10 @@
         el('resetPasswordBtn').addEventListener('click', resetPassword);
         el('resendVerificationBtn').addEventListener('click', resendVerification);
         el('verifiedContinueBtn').addEventListener('click', refreshVerifiedUser);
-        el('refreshRoleBtn').addEventListener('click', loadProfileAndGate);
+        el('refreshRoleBtn').addEventListener('click', async () => {
+            try { await loadProfileAndGate(); }
+            catch (error) { showProfileLoadError(error); }
+        });
         el('createGroupForm').addEventListener('submit', createGroup);
         el('groupSearchForm').addEventListener('submit', event => { event.preventDefault(); refreshDiscoverableGroups(); });
         el('signOutFromGroupsBtn').addEventListener('click', signOut);
