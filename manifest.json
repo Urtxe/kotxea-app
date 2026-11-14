@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "Kotxea — viajes compartidos",
+  "short_name": "Kotxea",
+  "description": "Organiza los viajes compartidos y el turno de conducir.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#25354b",
+  "theme_color": "#c10072",
+  "icons": [
+    {
+      "src": "./assets/kotxea-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

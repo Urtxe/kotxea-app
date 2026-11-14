@@ -1,0 +1,256 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function verified() { return signedIn() && request.auth.token.email_verified == true; }
+    function rolePath(uid) { return /databases/$(database)/documents/platformRoles/$(uid); }
+    function isSuperAdmin() {
+      return signedIn() && exists(rolePath(request.auth.uid)) && get(rolePath(request.auth.uid)).data.role == 'superadmin';
+    }
+    function canCreateGroups() {
+      return isSuperAdmin() || (signedIn() && exists(rolePath(request.auth.uid)) && get(rolePath(request.auth.uid)).data.role == 'creator');
+    }
+    function groupPath(groupId) { return /databases/$(database)/documents/groups/$(groupId); }
+    function memberPath(groupId, uid) { return /databases/$(database)/documents/groups/$(groupId)/members/$(uid); }
+    function isMember(groupId) { return signedIn() && exists(memberPath(groupId, request.auth.uid)); }
+    function isGroupAdmin(groupId) {
+      return isSuperAdmin() || (isMember(groupId) && get(memberPath(groupId, request.auth.uid)).data.role in ['owner', 'admin']);
+    }
+    function groupIsActive(groupId) {
+      return exists(groupPath(groupId)) && get(groupPath(groupId)).data.status == 'active';
+    }
+    function validGroupState(groupId) {
+      return signedIn() && (
+        ((isSuperAdmin() || isMember(groupId)) && groupIsActive(groupId))
+        || (isGroupAdmin(groupId)
+          && exists(groupPath(groupId))
+          && get(groupPath(groupId)).data.status == 'initializing'
+          && get(groupPath(groupId)).data.createdBy == request.auth.uid)
+      );
+    }
+
+    match /platformRoles/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isSuperAdmin());
+      allow list: if isSuperAdmin();
+      allow create, update: if isSuperAdmin()
+        && request.resource.data.keys().hasOnly(['role', 'grantedBy', 'grantedAt'])
+        && request.resource.data.role == 'creator'
+        && request.resource.data.grantedBy == request.auth.uid;
+      allow delete: if isSuperAdmin() && uid != request.auth.uid;
+    }
+
+    match /users/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isSuperAdmin());
+      allow list: if isSuperAdmin();
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.keys().hasOnly(['uid', 'email', 'displayName', 'createdAt']);
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'displayName'])
+        && request.resource.data.uid == uid;
+      allow delete: if false;
+
+      match /groups/{groupId} {
+        allow get, list: if signedIn() && request.auth.uid == uid;
+        allow create, update: if signedIn() && (
+          (request.auth.uid == uid
+            && getAfter(memberPath(groupId, uid)).data.uid == uid
+            && getAfter(memberPath(groupId, uid)).data.role == request.resource.data.role)
+          || (isGroupAdmin(groupId)
+            && getAfter(memberPath(groupId, uid)).data.uid == uid
+            && getAfter(memberPath(groupId, uid)).data.role == request.resource.data.role)
+        );
+        allow delete: if false;
+      }
+
+      match /requests/{requestId} {
+        allow get, list: if signedIn() && request.auth.uid == uid;
+        allow create, update: if signedIn() && (
+          (request.auth.uid == uid
+            && getAfter(/databases/$(database)/documents/joinRequests/$(requestId)).data.uid == uid
+            && getAfter(/databases/$(database)/documents/joinRequests/$(requestId)).data.status == 'pending')
+          || (isGroupAdmin(resource.data.groupId)
+            && getAfter(/databases/$(database)/documents/joinRequests/$(requestId)).data.status == request.resource.data.status)
+        );
+        allow delete: if false;
+      }
+    }
+
+    match /groups/{groupId} {
+      allow get: if isSuperAdmin() || isMember(groupId);
+      allow list: if isSuperAdmin();
+      allow create: if verified() && canCreateGroups()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'initializing'
+        && request.resource.data.revision == 0;
+      allow update: if isSuperAdmin()
+        || (isGroupAdmin(groupId)
+          && request.resource.data.ownerUid == resource.data.ownerUid
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'discoverable', 'updatedAt', 'revision'])
+          && (request.resource.data.status == resource.data.status
+            || (resource.data.status == 'initializing'
+              && request.resource.data.status == 'active'
+              && resource.data.createdBy == request.auth.uid))
+          && (request.resource.data.revision == resource.data.revision
+            || request.resource.data.revision == resource.data.revision + 1))
+        || (isMember(groupId) && groupIsActive(groupId)
+          && request.resource.data.ownerUid == resource.data.ownerUid
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt', 'revision'])
+          && request.resource.data.revision == resource.data.revision + 1);
+      allow delete: if isSuperAdmin();
+
+      match /members/{uid} {
+        allow get, list: if isSuperAdmin() || isGroupAdmin(groupId);
+        allow create: if signedIn() && uid == request.auth.uid && canCreateGroups()
+            && getAfter(groupPath(groupId)).data.status == 'initializing'
+            && getAfter(groupPath(groupId)).data.ownerUid == request.auth.uid
+            && request.resource.data.role == 'owner'
+            && request.resource.data.uid == uid
+            && getAfter(/databases/$(database)/documents/users/$(uid)/groups/$(groupId)).data.role == 'owner'
+          || verified() && uid == request.auth.uid && request.resource.data.uid == uid
+            && request.resource.data.role in ['member', 'admin']
+            && ((request.resource.data.inviteId is string
+                && getAfter(/databases/$(database)/documents/invitations/$(request.resource.data.inviteId)).data.groupId == groupId
+                && getAfter(/databases/$(database)/documents/invitations/$(request.resource.data.inviteId)).data.acceptedBy == uid
+                && getAfter(/databases/$(database)/documents/invitations/$(request.resource.data.inviteId)).data.status == 'accepted'
+                && getAfter(/databases/$(database)/documents/invitations/$(request.resource.data.inviteId)).data.role == request.resource.data.role
+                && getAfter(/databases/$(database)/documents/invitations/$(request.resource.data.inviteId)).data.personId == request.resource.data.personId
+                && getAfter(/databases/$(database)/documents/invitations/$(request.resource.data.inviteId)).data.email == request.auth.token.email)
+              || (request.resource.data.joinRequestId is string
+                && getAfter(/databases/$(database)/documents/joinRequests/$(request.resource.data.joinRequestId)).data.groupId == groupId
+                && getAfter(/databases/$(database)/documents/joinRequests/$(request.resource.data.joinRequestId)).data.uid == uid
+                && getAfter(/databases/$(database)/documents/joinRequests/$(request.resource.data.joinRequestId)).data.status == 'approved'
+                && getAfter(/databases/$(database)/documents/joinRequests/$(request.resource.data.joinRequestId)).data.personId == request.resource.data.personId));
+        allow update: if isGroupAdmin(groupId)
+            && resource.data.role != 'owner'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+            && request.resource.data.role in ['member', 'admin']
+          || isSuperAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+            && request.resource.data.role in ['member', 'admin', 'owner'];
+        allow delete: if isSuperAdmin();
+      }
+
+      match /people/{personId} {
+        allow get, list: if isSuperAdmin() || isMember(groupId);
+        allow create: if isGroupAdmin(groupId) && validGroupState(groupId)
+          && request.resource.data.id is string
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.active is bool
+          && (request.resource.data.get('linkedUid', null) == null || (
+            getAfter(memberPath(groupId, request.resource.data.linkedUid)).data.personId == request.resource.data.id
+            && getAfter(memberPath(groupId, request.resource.data.linkedUid)).data.uid == request.resource.data.linkedUid));
+        allow update: if ((isGroupAdmin(groupId) && validGroupState(groupId))
+            || (verified() && groupIsActive(groupId)
+              && getAfter(memberPath(groupId, request.auth.uid)).data.uid == request.auth.uid
+              && getAfter(memberPath(groupId, request.auth.uid)).data.personId == request.resource.data.id
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linkedUid'])))
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.active is bool
+          && (request.resource.data.get('linkedUid', null) == resource.data.get('linkedUid', null) || (
+            resource.data.get('linkedUid', null) == null
+            && getAfter(memberPath(groupId, request.resource.data.linkedUid)).data.personId == request.resource.data.id
+            && getAfter(memberPath(groupId, request.resource.data.linkedUid)).data.uid == request.resource.data.linkedUid));
+        allow delete: if isGroupAdmin(groupId) && validGroupState(groupId) && resource.data.get('linkedUid', null) == null;
+      }
+
+      match /trips/{tripId} {
+        allow get, list: if isSuperAdmin() || isMember(groupId);
+        allow create: if validGroupState(groupId)
+          && request.resource.data.id is string
+          && request.resource.data.id == tripId
+          && request.resource.data.date is string
+          && request.resource.data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && request.resource.data.driver is string
+          && request.resource.data.passengers is list
+          && request.resource.data.passengers.size() > 0
+          && request.resource.data.passengers.size() <= 8
+          && request.resource.data.passengers.hasAny([request.resource.data.driver])
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.updatedBy == request.auth.uid
+          && (!('leg' in request.resource.data) || request.resource.data.leg == null || request.resource.data.leg in ['ida', 'vuelta'])
+          && request.resource.data.keys().hasOnly(['id', 'date', 'driver', 'passengers', 'leg', 'createdBy', 'updatedBy', 'updatedAt']);
+        allow update: if validGroupState(groupId)
+          && (isGroupAdmin(groupId) || resource.data.createdBy == request.auth.uid)
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.date is string
+          && request.resource.data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && request.resource.data.passengers is list
+          && request.resource.data.passengers.size() > 0
+          && request.resource.data.passengers.size() <= 8
+          && request.resource.data.passengers.hasAny([request.resource.data.driver])
+          && (!('leg' in request.resource.data) || request.resource.data.leg == null || request.resource.data.leg in ['ida', 'vuelta'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'driver', 'passengers', 'leg', 'updatedBy', 'updatedAt']);
+        allow delete: if validGroupState(groupId) && (isGroupAdmin(groupId) || resource.data.createdBy == request.auth.uid);
+      }
+    }
+
+    match /directoryGroups/{groupId} {
+      allow get: if verified() && resource.data.discoverable == true || isSuperAdmin();
+      allow list: if verified() && resource.data.discoverable == true || isSuperAdmin();
+      allow create, update: if isGroupAdmin(groupId)
+        && request.resource.data.groupId == groupId
+        && request.resource.data.keys().hasOnly(['groupId', 'name', 'discoverable', 'status', 'updatedAt'])
+        && getAfter(groupPath(groupId)).data.name == request.resource.data.name;
+      allow delete: if isSuperAdmin();
+    }
+
+    match /joinRequests/{requestId} {
+      allow get: if signedIn() && (resource.data.uid == request.auth.uid || isGroupAdmin(resource.data.groupId));
+      allow list: if signedIn() && isGroupAdmin(resource.data.groupId);
+      allow create: if verified()
+        && request.resource.data.uid == request.auth.uid
+        && requestId == request.resource.data.groupId + '_' + request.auth.uid
+        && request.resource.data.status == 'pending'
+        && exists(/databases/$(database)/documents/directoryGroups/$(request.resource.data.groupId))
+        && get(/databases/$(database)/documents/directoryGroups/$(request.resource.data.groupId)).data.discoverable == true
+        && get(/databases/$(database)/documents/directoryGroups/$(request.resource.data.groupId)).data.status == 'active';
+      allow update: if signedIn() && (
+        (isGroupAdmin(resource.data.groupId)
+          && request.resource.data.groupId == resource.data.groupId
+          && request.resource.data.uid == resource.data.uid
+          && resource.data.status == 'pending'
+          && request.resource.data.status in ['approved', 'rejected'])
+        || (resource.data.uid == request.auth.uid
+          && resource.data.status == 'rejected'
+          && request.resource.data.status == 'pending'
+          && request.resource.data.groupId == resource.data.groupId));
+      allow delete: if isSuperAdmin();
+    }
+
+    match /invitations/{inviteId} {
+      allow get: if isSuperAdmin() || isGroupAdmin(resource.data.groupId)
+        || (verified() && request.auth.token.email == resource.data.email);
+      allow list: if isSuperAdmin() || isGroupAdmin(resource.data.groupId);
+      allow create: if verified() && isGroupAdmin(request.resource.data.groupId)
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.email is string
+        && request.resource.data.role in ['member', 'admin']
+        && ((request.resource.data.role == 'admin' && request.resource.data.personId == null)
+          || (request.resource.data.role == 'member'
+            && get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)/people/$(request.resource.data.personId)).data.get('linkedUid', null) == null));
+      allow update: if isGroupAdmin(resource.data.groupId)
+          && resource.data.status == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'revokedAt', 'revokedBy'])
+          && request.resource.data.status == 'revoked'
+        || verified() && request.auth.token.email == resource.data.email
+          && resource.data.status == 'pending'
+          && resource.data.expiresAt > request.time
+          && groupIsActive(resource.data.groupId)
+          && request.resource.data.status == 'accepted'
+          && request.resource.data.acceptedBy == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedBy', 'acceptedAt'])
+          && getAfter(memberPath(resource.data.groupId, request.auth.uid)).data.inviteId == inviteId;
+      allow delete: if isSuperAdmin();
+    }
+  }
+}

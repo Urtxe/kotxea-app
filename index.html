@@ -5,13 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Kotxea</title>
     <meta name="theme-color" content="#c10072">
+    <link rel="manifest" href="./manifest.json">
+    <link rel="icon" href="./assets/kotxea-icon.svg" type="image/svg+xml">
     <script>
         try {
             const theme = localStorage.getItem('kotxea-theme');
             if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
         } catch (_) {}
     </script>
-    <link rel="stylesheet" href="styles.css?v=8">
+    <link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
     <div class="app-shell">
@@ -21,12 +23,79 @@
             <p class="eyebrow">BIDAIAK PARTEKATUZ</p>
             <h1>Kotxea</h1>
         </div>
-        <span class="storage-note">Datuak gailu honetan</span>
+        <span class="storage-note">Datuak Firebase-n</span>
+        <select id="activeGroupSelect" class="header-group-select" aria-label="Talde aktiboa" hidden></select>
+        <button type="button" id="installAppBtn" class="secondary-button install-app-button" hidden>Instalar</button>
+        <span id="installHelp" class="install-help" hidden></span>
+        <button type="button" id="accountMenuBtn" class="secondary-button account-button" hidden>Kontua</button>
         <button type="button" id="themeToggle" class="theme-toggle" aria-label="Gai argira aldatu" aria-pressed="false" title="Gai argira aldatu">
             <span id="themeIcon" aria-hidden="true">☀</span>
         </button>
     </header>
     <main>
+        <section id="authPanel" class="gate-panel" aria-labelledby="authTitle" hidden>
+            <div class="screen-heading"><p class="eyebrow">ONGI ETORRI</p><h2 id="authTitle">Sartu Kotxean</h2></div>
+            <p class="screen-intro">Bidaiak eta taldeak zure kontuarekin sinkronizatuko dira gailu guztietan.</p>
+            <form id="authForm" class="gate-form">
+                <div class="field"><label for="authEmail">Posta elektronikoa</label><input id="authEmail" type="email" autocomplete="email" required></div>
+                <div class="field"><label for="authPassword">Pasahitza</label><input id="authPassword" type="password" autocomplete="current-password" minlength="6" required></div>
+                <p id="authFeedback" class="help" role="status"></p>
+                <button type="submit" id="authSubmitBtn">Saioa hasi</button>
+                <button type="button" id="googleSignInBtn" class="secondary-button">Google-rekin jarraitu</button>
+                <button type="button" id="authModeBtn" class="text-button">Kontu berria sortu</button>
+                <button type="button" id="resetPasswordBtn" class="text-button">Pasahitza berrezarri</button>
+                <button type="button" id="resendVerificationBtn" class="secondary-button" hidden>Bidali egiaztapen-mezua berriro</button>
+                <button type="button" id="verifiedContinueBtn" class="secondary-button" hidden>Posta egiaztatu dut</button>
+            </form>
+        </section>
+
+        <section id="groupsPanel" class="gate-panel" aria-labelledby="groupsTitle" hidden>
+            <div class="screen-heading"><p class="eyebrow">ZURE TALDEAK</p><h2 id="groupsTitle">Aukeratu taldea</h2></div>
+            <p id="groupsFeedback" class="help" role="status"></p>
+            <p id="bootstrapHelp" class="help" hidden></p>
+            <button type="button" id="refreshRoleBtn" class="secondary-button" hidden>Actualizar permisos</button>
+            <ul id="myGroupsList" class="group-picker-list"></ul>
+            <details id="createGroupDetails" class="settings-panel" hidden>
+                <summary>Talde berria sortu</summary>
+                <form id="createGroupForm" class="gate-form">
+                    <div class="field"><label for="newGroupName">Taldearen izena</label><input id="newGroupName" maxlength="80" required placeholder="Donostia–Mondragón"></div>
+                    <label class="check-row"><input id="newGroupDiscoverable" type="checkbox" checked> Baimendu talde hau bilatzea eta sartzeko eskaera egitea</label>
+                    <label class="check-row"><input id="importLocalData" type="checkbox" checked> Gailu honetan gordetako bidaiariak, saldoak eta historia inportatu (daturik badago)</label>
+                    <p id="createGroupFeedback" class="help" role="status"></p>
+                    <button type="submit">Taldea sortu</button>
+                </form>
+            </details>
+            <details class="settings-panel">
+                <summary>Bilatu talde bat</summary>
+                <form id="groupSearchForm" class="gate-form">
+                    <div class="field"><label for="groupSearch">Taldearen izena</label><input id="groupSearch" maxlength="80" autocomplete="off"></div>
+                    <button type="submit" class="secondary-button">Bilatu</button>
+                </form>
+                <ul id="discoverableGroupsList" class="group-picker-list"></ul>
+            </details>
+            <section id="pendingRequestsPanel" class="settings-panel" hidden><h3>Nire eskaerak</h3><ul id="myRequestsList" class="group-picker-list"></ul></section>
+            <section id="emailInvitesPanel" class="settings-panel" hidden><h3>Gonbidapenak</h3><ul id="myInvitesList" class="group-picker-list"></ul></section>
+            <button type="button" id="signOutFromGroupsBtn" class="secondary-button">Saioa itxi</button>
+        </section>
+
+        <section id="adminPanel" class="gate-panel" aria-labelledby="adminTitle" hidden>
+            <div class="screen-heading"><p class="eyebrow">PLATAFORMA</p><h2 id="adminTitle">Administrazioa</h2></div>
+            <p id="adminFeedback" class="help" role="status"></p>
+            <div id="adminRoleTools" class="settings-panel" hidden>
+                <h3>Plataforma-administratzaileak</h3>
+                <form id="platformRoleForm" class="gate-form">
+                    <div class="field"><label for="adminUserSelect">Erabiltzailea</label><select id="adminUserSelect" required></select></div>
+                    <div class="field"><label for="platformRoleSelect">Rola</label><select id="platformRoleSelect"><option value="creator">Taldeak sortu eta kudeatu</option><option value="none">Plataforma rola kendu</option></select></div>
+                    <button type="submit">Rola gorde</button>
+                </form>
+                <p class="help">Superadministratzailearen lehen alta Firebase kontsolan egiten da; ez eman rola erabiltzailearen beraren aukerarekin.</p>
+            </div>
+            <h3>Taldeak</h3><ul id="adminGroupsList" class="group-picker-list"></ul>
+            <section id="allUsersPanel" class="settings-panel" hidden><h3>Kontuak</h3><p class="help">Erabiltzaile bati plataformako talde-sortzaile rola eman edo kendu.</p></section>
+            <button type="button" id="backToGroupsBtn" class="secondary-button">Nire taldeetara itzuli</button>
+        </section>
+
+        <div id="appContent" hidden>
         <p id="startupWarning" role="alert">Datuak kargatzen. Mezu hau desagertzen ez bada, berritu orria: JavaScript behar da bidaiak kudeatzeko.</p>
         <p id="appStatus" role="status" aria-live="polite"></p>
         <section class="app-screen is-active" data-screen="summary" aria-labelledby="summaryTitle">
@@ -133,11 +202,27 @@
                 </fieldset>
             </form>
         </details>
+        <details id="groupAdminTools" class="settings-panel" hidden>
+            <summary>Taldearen administrazioa</summary>
+            <p class="help">Kudeatu kideak, eskaerak eta gonbidapenak. Talde honetako datuak soilik ikus ditzakezu.</p>
+            <form id="inviteForm" class="gate-form">
+                <div class="field"><label for="inviteEmail">Gonbidatu posta elektronikoarekin</label><input type="email" id="inviteEmail" required autocomplete="email"></div>
+                <div class="field"><label for="inviteRole">Taldeko baimena</label><select id="inviteRole"><option value="member">Bidaiaria</option><option value="admin">Taldeko administratzailea</option></select></div>
+                <div class="field" id="invitePersonField"><label for="invitePerson">Taldeko pertsona</label><select id="invitePerson"></select><p class="help">Bidaiatzen ez duen administratzailearentzat, utzi hutsik.</p></div>
+                <button type="submit">Gonbidapen-esteka sortu</button>
+            </form>
+            <p id="inviteFeedback" class="help" role="status"></p>
+            <h3>Sartzeko eskaerak</h3><ul id="groupRequestsList" class="group-picker-list"></ul>
+            <h3>Sortutako gonbidapenak</h3><ul id="groupInvitesList" class="group-picker-list"></ul>
+            <label class="check-row"><input type="checkbox" id="groupDiscoverableToggle"> Bilaketetan agertu</label>
+            <button type="button" id="saveGroupVisibilityBtn" class="secondary-button">Ikusgaitasuna gorde</button>
+            <h3>Talde-administratzaileak</h3><ul id="groupMembersList" class="group-picker-list"></ul>
+        </details>
         <details class="backup-tools settings-panel">
             <summary>Segurtasun-kopiak</summary>
-            <p>Datuak nabigatzaile honetan soilik gordetzen dira. Egin kopia bat gailuz aldatu edo nabigatzailearen datuak garbitu aurretik. Inportazioak uneko datuak ordezkatzen ditu.</p>
+            <p>Talde honetako datuak Firebase-n gordetzen dira. Deskargatu JSON kopia bat gordetzeko edo beste talde batera eramateko. Inportazioak talde honetako datuak ordezkatzen ditu.</p>
             <button type="button" id="exportBtn">JSON kopia deskargatu</button>
-            <label for="importFile">JSON kopia inportatu:</label>
+            <label id="importFileLabel" for="importFile">JSON kopia inportatu:</label>
             <input type="file" id="importFile" accept=".json,application/json">
         </details>
         <details class="settings-panel reset-tools">
@@ -149,6 +234,7 @@
             <button type="button" id="resetBtn" class="danger-button">Dena ezabatu eta zerotik hasi</button>
         </details>
         </section>
+        </div>
     </main>
     <footer lang="en">
         <p>&copy; 2026 All rights reserved.</p>
@@ -159,6 +245,8 @@
         <button type="button" class="nav-item" data-screen-target="trip"><span aria-hidden="true">＋</span>Bidaia</button>
         <button type="button" class="nav-item" data-screen-target="history"><span aria-hidden="true">◷</span>Historiala</button>
         <button type="button" class="nav-item" data-screen-target="group"><span aria-hidden="true">☷</span>Taldea</button>
+        <button type="button" id="globalAdminNav" class="nav-item" hidden><span aria-hidden="true">⚙</span>Admin</button>
+        <button type="button" id="changeGroupNav" class="nav-item" hidden><span aria-hidden="true">▦</span>Taldeak</button>
     </nav>
     </div>
     <dialog id="tripSavedDialog" class="save-dialog" aria-labelledby="tripSavedTitle">
@@ -167,6 +255,11 @@
         <p>Bidaia ondo gorde da.</p>
         <form method="dialog"><button autofocus>Ados</button></form>
     </dialog>
-    <script src="script.js?v=8"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="./firebase-config.js"></script>
+    <script src="./cloud.js?v=1"></script>
+    <script src="./script.js?v=10"></script>
 </body>
 </html>

@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Prepare site
-        run: mkdir public && cp index.html script.js styles.css public/
+        run: mkdir -p public/assets && cp index.html script.js cloud.js firebase-config.js styles.css manifest.json service-worker.js public/ && cp assets/kotxea-icon.svg public/assets/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public

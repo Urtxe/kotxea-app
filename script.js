@@ -50,7 +50,7 @@
     function peopleMap(people) { const map = new Map(); (people || []).forEach(person => map.set(person.id, person)); return map; }
     function validatePerson(person) { return person && validId(person.id) && typeof person.name === 'string' && person.name.trim().length > 0 && person.name.trim().length <= 80 && typeof person.active === 'boolean'; }
     function validateTrip(trip, people) {
-        if (!trip || !validId(trip.id) || !validDate(trip.date) || !validId(trip.driver) || !people.has(trip.driver) || !Array.isArray(trip.passengers) || trip.passengers.length === 0) return false;
+        if (!trip || !validId(trip.id) || !validDate(trip.date) || !validId(trip.driver) || !people.has(trip.driver) || !Array.isArray(trip.passengers) || trip.passengers.length === 0 || trip.passengers.length > 8) return false;
         const seen = new Set(); return trip.passengers.every(id => validId(id) && people.has(id) && !seen.has(id) && seen.add(id)) && trip.passengers.includes(trip.driver);
     }
     function validateState(state) {
@@ -139,6 +139,8 @@
     let state = null; let readOnly = false; let snapshot = null; let storage; let editingTripIds = [];
     try { storage = root.localStorage; } catch (_) { storage = null; }
     function el(id) { return document.getElementById(id); }
+    function canManageGroup() { return Boolean(root.KotxeaCloud && root.KotxeaCloud.canManageGroup()); }
+    function canModifyTrip(trip) { return canManageGroup() || Boolean(trip && trip.createdBy && trip.createdBy === root.KotxeaCloud?.currentUser()?.uid); }
     function showScreen(name) {
         document.querySelectorAll('[data-screen]').forEach(screen => {
             const active = screen.dataset.screen === name;
@@ -232,6 +234,7 @@
             button.type = 'button';
             button.className = 'secondary-button';
             button.textContent = person.active ? 'Kendu' : 'Berreskuratu';
+            button.hidden = !canManageGroup();
             button.setAttribute('aria-label', person.name + ': ' + button.textContent);
             button.dataset.personId = person.id;
             button.addEventListener('click', togglePerson);
@@ -308,19 +311,17 @@
                 cell.dataset.label = label;
                 cell.textContent = text;
             });
-            const actions = row.insertCell();
-            actions.dataset.label = 'Ekintzak';
-            [
-                ['Errepikatu', event => editTrip(event, true)],
-                ['Editatu', editTrip],
-                ['Ezabatu', deleteTrip]
-            ].forEach(([label, handler]) => {
+            const actionCell = row.insertCell();
+            actionCell.dataset.label = 'Ekintzak';
+            const actions = [['Errepikatu', event => editTrip(event, true)]];
+            if (canModifyTrip(trip)) actions.push(['Editatu', editTrip], ['Ezabatu', deleteTrip]);
+            actions.forEach(([label, handler]) => {
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.textContent = label;
                 button.dataset.id = trip.id;
                 button.addEventListener('click', handler);
-                actions.append(button);
+                actionCell.append(button);
             });
         });
     }
@@ -338,7 +339,7 @@
         });
     }
     function saveOpeningBalances(event) {
-        event.preventDefault(); if (readOnly) return;
+        event.preventDefault(); if (readOnly || !canManageGroup()) return;
         const balances = Object.create(null);
         for (const input of el('openingBalances').querySelectorAll('input')) {
             const value = input.value.trim().replace(',', '.');
@@ -350,14 +351,20 @@
         persist(result.state);
     }
     function renderAll() { renderSummary(); renderPeopleChoices(); renderHistoryPeople(); renderHistory(); renderOpeningBalances(); }
-    function persist(nextState, recovery = false) {
+    async function persist(nextState, recovery = false) {
         if ((!recovery && readOnly) || !validateState(nextState)) { setStatus('Datuak ez dira baliozkoak edo ezin dira aldatu.'); return false; }
-        // ponytail: detects stale tabs; simultaneous writers still need Web Locks or IndexedDB.
-        try { if (!recovery && snapshot !== storage.getItem(STATE_KEY)) { setStatus('Beste fitxa batean datuak aldatu dira. Berritu orria gorde aurretik.'); return false; } } catch (_) { setStatus('Ezin izan dira aldaketak gorde; datuak ez dira aldatu.'); return false; }
-        const text = JSON.stringify(nextState);
-        try { storage.setItem(STATE_KEY, text); } catch (_) { setStatus('Ezin izan dira aldaketak gorde; datuak ez dira aldatu.'); return false; }
-        state = nextState; readOnly = false; snapshot = text;
-        setStatus('Aldaketak gordeta.'); renderAll(); return true;
+        if (root.KotxeaCloud?.currentGroup()) {
+            const previous = state;
+            const groupId = root.KotxeaCloud.currentGroup().id;
+            const previousTripIds = new Set(previous.trips.map(trip => trip.id));
+            const uid = root.KotxeaCloud.currentUser()?.uid;
+            nextState.trips.forEach(trip => { if (!previousTripIds.has(trip.id) && uid) trip.createdBy = uid; });
+            const saved = await root.KotxeaCloud.persistState(previous, nextState);
+            if (saved && root.KotxeaCloud.currentGroup()?.id === groupId) { state = nextState; renderAll(); setStatus('Aldaketak Firebase-n gordeta.'); return true; }
+            return false;
+        }
+        setStatus('Aukeratu talde bat datuak gordetzeko.');
+        return false;
     }
     function resetTripForm() {
         editingTripIds = [];
@@ -371,7 +378,7 @@
         renderPeopleChoices();
         updateDriverCheckbox(true);
     }
-    function togglePerson(event) { if (readOnly) return; const next = clone(state); const person = next.people.find(item => item.id === event.currentTarget.dataset.personId); if (!person) return; if (person.active) removePerson(next, person.id); else person.active = true; persist(next); }
+    function togglePerson(event) { if (readOnly || !canManageGroup()) return; const next = clone(state); const person = next.people.find(item => item.id === event.currentTarget.dataset.personId); if (!person) return; if (person.active) removePerson(next, person.id); else person.active = true; persist(next); }
     let tripSavedTimer;
     function showTripSaved() {
         const dialog = el('tripSavedDialog');
@@ -381,9 +388,9 @@
     }
     function submitTrip(event) {
         event.preventDefault(); if (readOnly) return; const date = el('bidaiaData').value; const driver = el('nor').value; const passengers = [...document.querySelectorAll('input[name="bidaiariak"]:checked')].map(input => input.value);
-        const editId = tripIdField()?.value; if (!validDate(date)) { alert('Hautatu baliozko data bat.'); return; } if (!driver || passengers.length === 0 || !passengers.includes(driver)) { alert('Gidaria bidaiarien artean hautatu behar duzu.'); return; }
+        const editId = tripIdField()?.value; if (!validDate(date)) { alert('Hautatu baliozko data bat.'); return; } if (passengers.length > 8) { alert('Gehienez 8 pertsona erregistra daitezke auto berean.'); return; } if (!driver || passengers.length === 0 || !passengers.includes(driver)) { alert('Gidaria bidaiarien artean hautatu behar duzu.'); return; }
         const next = clone(state); if (editId) { const trip = next.trips.find(item => String(item.id) === String(editId)); if (!trip) return; trip.date = date; trip.driver = driver; trip.passengers = passengers; } else next.trips.push({ id: makeId(), date, driver, passengers });
-        if (persist(next)) { resetTripForm(); showTripSaved(); }
+        persist(next).then(saved => { if (saved) { resetTripForm(); showTripSaved(); } });
     }
     function editTrip(event, repeat = false) {
         const trip = state.trips.find(item => item.id === event.currentTarget.dataset.id);
@@ -407,10 +414,11 @@
         if (readOnly || !confirm('Ziur zaude bidaia hau ezabatu nahi duzula?')) return;
         const id = event.currentTarget.dataset.id;
         const next = clone(state); next.trips = next.trips.filter(trip => trip.id !== id);
-        if (persist(next) && el('editTripId').value === id) resetTripForm();
+        persist(next).then(saved => { if (saved && el('editTripId').value === id) resetTripForm(); });
     }
-    function toggleAddPerson(event) { event.preventDefault(); if (readOnly) return; const next = clone(state); const result = addPerson(next, el('personName').value); if (result.error) { alert(result.error); return; } if (persist(next)) el('personName').value = ''; }
+    function toggleAddPerson(event) { event.preventDefault(); if (readOnly || !canManageGroup()) return; const next = clone(state); const result = addPerson(next, el('personName').value); if (result.error) { alert(result.error); return; } persist(next).then(saved => { if (saved) el('personName').value = ''; }); }
     function importState(event) {
+        if (!canManageGroup()) { setStatus('Taldeko administratzaile batek soilik inporta ditzake datuak.'); event.target.value = ''; return; }
         const file = event.target.files[0]; event.target.value = ''; if (!file) return;
         const reader = new FileReader();
         reader.onerror = () => setStatus('Ezin izan da fitxategia irakurri.');
@@ -418,16 +426,13 @@
             let imported;
             try { imported = JSON.parse(reader.result); } catch (_) { setStatus('Inportatutako fitxategia ez da JSON baliozkoa.'); return; }
             if (!validateState(imported)) { setStatus('Inportatutako datuak ez dira baliozkoak.'); return; }
-            if (confirm('Inportazioak uneko datuak ordezkatuko ditu. Egin kopia bat lehenik. Jarraitu?') && persist(clone(imported), readOnly)) {
-                el('startupWarning').hidden = true;
-                bindReadyListeners(); resetTripForm();
-            }
+            if (confirm('Inportazioak uneko datuak ordezkatuko ditu. Egin kopia bat lehenik. Jarraitu?')) persist(clone(imported), readOnly).then(saved => { if (saved) resetTripForm(); });
         };
         reader.readAsText(file);
     }
     function exportState() {
         let payload;
-        try { payload = JSON.stringify(!readOnly && state ? state : { raw: storage.getItem(STATE_KEY), summary: storage.getItem(SUMMARY_KEY), history: storage.getItem(HISTORY_KEY) }, null, 2); }
+        try { payload = JSON.stringify(state || { raw: storage?.getItem(STATE_KEY), summary: storage?.getItem(SUMMARY_KEY), history: storage?.getItem(HISTORY_KEY) }, null, 2); }
         catch (_) { setStatus('Ezin izan dira datuak irakurri kopia egiteko.'); return; }
         const link = document.createElement('a');
         link.href = URL.createObjectURL(new Blob([payload], { type: 'application/json' }));
@@ -435,16 +440,24 @@
         link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     }
     function resetState(clearOpening = true) {
+        if (!canManageGroup()) { setStatus('Taldeko administratzaile batek soilik berrezar ditzake datuak.'); return; }
         if (!clearOpening && (readOnly || !state)) return;
         const message = clearOpening
             ? 'Bidaia guztiak eta hasierako saldoak ezabatuko dira. Denak zerotik hasiko dira. Pertsonak mantenduko dira. Jarraitu?'
             : 'Aplikazioan erregistratutako bidaia guztiak ezabatuko dira eta hasierako saldoetara itzuliko zara. Pertsonak mantenduko dira. Jarraitu?';
         if (!confirm(message)) return;
         const next = resetTrips(state || emptyState(), clearOpening);
-        if (persist(next, readOnly)) { el('startupWarning').hidden = true; bindReadyListeners(); resetTripForm(); }
+        persist(next, readOnly).then(saved => { if (saved) resetTripForm(); });
     }
     let readyListenersBound = false;
     function bindReadyListeners() {
+        const manager = canManageGroup();
+        el('personForm').hidden = !manager;
+        el('openingForm').closest('details').hidden = !manager;
+        document.querySelector('.reset-tools').hidden = !manager;
+        el('importFileLabel').hidden = !manager;
+        el('importFile').hidden = !manager;
+        el('importFile').disabled = !manager;
         el('personName').disabled = false;
         el('personForm').querySelectorAll('button').forEach(button => { button.disabled = false; });
         el('openingControls').disabled = false;
@@ -466,7 +479,7 @@
         el('bidaiForm').addEventListener('submit', submitTrip);
         el('personForm').addEventListener('submit', toggleAddPerson);
         el('openingForm').addEventListener('submit', saveOpeningBalances);
-        el('restoreDefaultsBtn').addEventListener('click', () => { const next = clone(state); restoreDefaults(next); persist(next); });
+        el('restoreDefaultsBtn').addEventListener('click', () => { if (!canManageGroup()) return; const next = clone(state); restoreDefaults(next); persist(next); });
         el('cancelEditBtn').addEventListener('click', resetTripForm);
     }
     function setup() {
@@ -490,14 +503,15 @@
         });
         el('exportBtn')?.addEventListener('click', exportState); el('importFile')?.addEventListener('change', importState); el('resetBtn')?.addEventListener('click', () => resetState(true));
         el('resetToOpeningBtn').addEventListener('click', () => resetState(false));
-        if (!storage) { readOnly = true; setStatus('Biltegiratzea ez dago erabilgarri. Datuak irakurtzeko moduan.', true); return; }
-        const result = parseStored(storage); if (result.error) { readOnly = true; setStatus(result.error + ' Egin babeskopia edo inportatu fitxategi baliozko bat.', true); return; }
-        state = result.state; if (result.migrated) { try { storage.setItem(STATE_KEY, JSON.stringify(state)); } catch (_) { readOnly = true; setStatus('Ezin izan da migrazioa gorde.', true); return; } }
-        try { snapshot = storage.getItem(STATE_KEY); }
-        catch (_) { readOnly = true; setStatus('Ezin izan dira datuak irakurri.', true); return; }
-        renderAll(); resetTripForm(); el('startupWarning').hidden = true;
-        bindReadyListeners();
-        root.addEventListener('storage', event => { if ((event.key === STATE_KEY || event.key === null) && event.newValue !== snapshot) setStatus('Beste fitxa batean datuak aldatu dira. Berritu orria gorde aurretik.'); });
+        if (!root.KotxeaCloud) { setStatus('Firebase konexioa falta da. Orria berritu edo administratzaileari jakinarazi.'); return; }
+        root.KotxeaCloud.start({
+            onState: (nextState) => {
+                state = nextState; readOnly = false;
+                renderAll(); resetTripForm(); bindReadyListeners();
+                el('startupWarning').hidden = true;
+            },
+            onStatus: setStatus
+        }).catch(error => { console.error('Kotxea startup failed', error); setStatus('Ezin izan da Firebase-ra konektatu. Saiatu berriro.'); });
     }
     root.addEventListener('DOMContentLoaded', setup);
 }(typeof window !== 'undefined' ? window : globalThis));
