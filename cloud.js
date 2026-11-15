@@ -250,7 +250,7 @@
     }
     async function refreshGroupsGate() {
         if (!signedIn()) return;
-        setGate('groups');
+        setGate('groupsPanel');
         el('createGroupDetails').hidden = !canCreateGroups();
         const pendingImportDocs = new Set();
         for (let i = 0; i < root.localStorage.length; i++) {
@@ -786,7 +786,7 @@
     }
     function showProfileLoadError(error) {
         console.error('Kotxea auth initialization failed', error);
-        setGate('groups');
+        setGate('groupsPanel');
         el('groupsFeedback').textContent = 'Ezin izan dira kontuaren datuak kargatu: ' + safeError(error) + ' Saiatu berriro edo itxi saioa.';
         el('bootstrapHelp').hidden = true;
         el('refreshRoleBtn').hidden = false;
@@ -802,7 +802,7 @@
             return;
         }
         el('authTitle').textContent = 'Sartu Kotxean';
-        setGate('groups');
+        setGate('groupsPanel');
         el('groupsFeedback').textContent = 'Kontuaren datuak kargatzen…';
         el('bootstrapHelp').hidden = true;
         el('refreshRoleBtn').hidden = false;
