@@ -17,44 +17,67 @@ async function startCloud(role, canParticipate = false, userAgent = '') {
             focus() { this.focused = true; },
             scrollIntoView() {},
             closest() { return this; },
-            replaceChildren() {}
+            replaceChildren() {},
+            append() {}, add() {}, reset() {},
+            querySelector() { return this.submitButton || (this.submitButton = { disabled: false }); }
         });
     }
     const nav = { hidden: false };
-    const emptySnapshot = { docs: [], empty: true, forEach() {} };
     const presenceWrites = [];
+    const documents = new Map();
+    let nextId = 0;
     const reference = (refPath) => ({
+        path: refPath,
+        id: refPath.split('/').at(-1),
         collection: name => reference(refPath + '/' + name),
-        doc: id => reference(refPath + '/' + id),
+        doc: (id = 'auto-' + ++nextId) => reference(refPath + '/' + id),
         where: () => reference(refPath),
+        onSnapshot() { return () => {}; },
         async set(data) { if (refPath.startsWith('userPresence/')) presenceWrites.push({ path: refPath, data }); },
         async get() {
             if (refPath === 'users/test-user') return { exists: true };
             if (refPath === 'platformRoles/test-user') return { exists: Boolean(role), data: () => ({ role, canParticipate }) };
-            return emptySnapshot;
+            if (documents.has(refPath)) return { exists: true, data: () => documents.get(refPath) };
+            if (refPath.split('/').length % 2 === 0) return { exists: false };
+            const docs = [...documents].filter(([key]) => key.startsWith(refPath + '/') && key.split('/').length === refPath.split('/').length + 1)
+                .map(([key, data]) => ({ id: key.split('/').at(-1), data: () => data }));
+            return { docs, empty: !docs.length, forEach(callback) { docs.forEach(callback); } };
         }
     });
     let onAuthChanged;
     const rootListeners = {};
     const auth = { onAuthStateChanged(callback) { onAuthChanged = callback; } };
-    const db = { collection: name => reference(name), async enablePersistence() {} };
+    const db = {
+        collection: name => reference(name), async enablePersistence() {},
+        batch() {
+            const writes = [];
+            return {
+                set(ref, data) { writes.push([ref.path, data]); },
+                update(ref, data) { writes.push([ref.path, { ...documents.get(ref.path), ...data }]); },
+                async commit() { writes.forEach(([key, data]) => documents.set(key, data)); }
+            };
+        }
+    };
     const firestore = Object.assign(() => db, { FieldValue: { serverTimestamp: () => new Date() } });
     const context = {
         console,
-        document: { getElementById: id => elements.get(id) || null, querySelector: () => nav, visibilityState: 'visible', addEventListener() {} },
+        document: { getElementById: id => elements.get(id) || null, querySelector: () => nav, querySelectorAll: () => [], createElement: () => ({ append() {}, addEventListener() {} }), visibilityState: 'visible', addEventListener() {} },
         firebase: { apps: [{}], auth: () => auth, firestore },
         KOTXEA_FIREBASE_CONFIG: {},
-        localStorage: { length: 0 },
+        localStorage: { length: 0, getItem() { return null; }, setItem() {}, removeItem() {} },
         navigator: { userAgent, platform: '', maxTouchPoints: 0 }, location: { protocol: 'https:', href: 'https://example.com/' },
         matchMedia: () => ({ matches: false }), addEventListener(event, listener) { rootListeners[event] = listener; },
-        setInterval() { return 1; }, clearInterval() {}, setTimeout(callback) { callback(); }, URL
+        setInterval() { return 1; }, clearInterval() {}, setTimeout(callback) { callback(); }, URL,
+        Option: function (label, value) { this.label = label; this.value = value; }
     };
     context.window = context;
-    vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'cloud.js'), 'utf8'), context);
+    for (const [, file] of html.matchAll(/<script src="\.\/(script|cloud)\.js\?v=\d+"><\/script>/g)) {
+        vm.runInNewContext(fs.readFileSync(path.join(__dirname, file + '.js'), 'utf8'), context);
+    }
     await context.KotxeaCloud.start();
     const user = { uid: 'test-user', email: 'user@example.com', displayName: 'Test', emailVerified: true, providerData: [{ providerId: 'google.com' }] };
     await onAuthChanged(user);
-    return { elements, nav, onAuthChanged, rootListeners, presenceWrites };
+    return { elements, nav, onAuthChanged, rootListeners, presenceWrites, documents, cloud: context.KotxeaCloud, logic: context.KotxeaLogic };
 }
 
 test('signed-in global administrator gets the dashboard without becoming a group participant', async () => {
@@ -95,6 +118,26 @@ test('group creation explains when the participant name is missing', async () =>
     await elements.get('createGroupForm').listeners.submit({ preventDefault() {} });
     assert.match(elements.get('createGroupFeedback').textContent, /Idatzi zure izena/);
     assert.equal(elements.get('newGroupParticipantName').focused, true);
+});
+
+test('production script order supports creating, activating and opening a group', async () => {
+    const { elements, documents, cloud, logic } = await startCloud(null);
+    elements.get('newGroupName').value = 'Donostia - Arrasate';
+    elements.get('newGroupParticipantName').value = 'Nerea';
+    elements.get('newGroupDiscoverable').checked = true;
+    await elements.get('createGroupForm').listeners.submit({ preventDefault() {} });
+
+    const group = cloud.currentGroup();
+    assert.ok(group, elements.get('createGroupFeedback').textContent + ' ' + elements.get('groupsFeedback').textContent);
+    assert.equal(group.status, 'active');
+    assert.equal(group.name, 'Donostia - Arrasate');
+    assert.equal(documents.get('groups/' + group.id).status, 'active');
+    assert.equal(documents.get('directoryGroups/' + group.id).name, group.name);
+    assert.equal(documents.get('groups/' + group.id + '/members/test-user').role, 'owner');
+    assert.equal(elements.get('appContent').hidden, false);
+    assert.equal(elements.get('createGroupFeedback').textContent, 'Taldea prest dago.');
+    assert.equal(elements.get('createGroupForm').submitButton.disabled, false);
+    assert.equal(logic.VERSION, 2);
 });
 
 test('native group form validation reports the field that needs attention', async () => {
