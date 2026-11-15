@@ -77,7 +77,10 @@ test('a regular account can create a group; signing out returns to login', async
     assert.equal(elements.get('createGroupDetails').hidden, false);
     assert.equal(elements.get('groupSearchPanel').hidden, false);
     assert.equal(elements.get('globalAdminFromGroupsBtn').hidden, true);
-    assert.equal(elements.get('refreshRoleBtn').hidden, false);
+    assert.equal(elements.has('refreshRoleBtn'), false);
+    assert.equal(elements.get('retryProfileBtn').hidden, true);
+    assert.equal(elements.has('bootstrapHelp'), false);
+    assert.match(elements.get('groupsFeedback').textContent, /Oraindik ez daukazu talderik/);
     await onAuthChanged(null);
     assert.equal(elements.get('authPanel').hidden, false);
     assert.equal(elements.get('groupsPanel').hidden, true);

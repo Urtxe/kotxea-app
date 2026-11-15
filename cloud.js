@@ -372,9 +372,9 @@
         if (isSuperAdmin()) {
             el('groupsFeedback').textContent = 'Administratzaile globala zara. Erabili administrazio-panela taldeak eta kontuak ikusteko.';
         } else if (userGroups.length === 0 && !canCreateGroups()) {
-            el('groupsFeedback').textContent = platformRole ? 'Oraindik ez dago talderik. Bilatu bat eta eskatu sartzeko.' : 'Kontu honek ez du talde-sortzaile rolik. Eskatu superadministratzaileari taldea sortzeko baimena.';
+            el('groupsFeedback').textContent = 'Oraindik ez dago talderik. Bilatu bat eta eskatu sartzeko.';
         } else {
-            el('groupsFeedback').textContent = userGroups.length ? 'Aukeratu zein taldetan lan egin.' : 'Sortu lehen taldea edo bilatu taldea.';
+            el('groupsFeedback').textContent = userGroups.length ? 'Aukeratu zein taldetan lan egin.' : 'Oraindik ez daukazu talderik. Sortu talde bat edo bilatu talde bat.';
         }
 
         const requestIndex = await db.collection('users').doc(user.uid).collection('requests').get();
@@ -1134,8 +1134,7 @@
         console.error('Kotxea auth initialization failed', error);
         setGate('groupsPanel');
         el('groupsFeedback').textContent = 'Ezin izan dira kontuaren datuak kargatu: ' + safeError(error) + ' Saiatu berriro edo itxi saioa.';
-        el('bootstrapHelp').hidden = true;
-        el('refreshRoleBtn').hidden = false;
+        el('retryProfileBtn').hidden = false;
     }
     async function loadProfileAndGate() {
         if (!user) { stopPresenceTracking(); activeGroup = null; activeMember = null; setGate('authPanel'); el('resendVerificationBtn').hidden = true; el('verifiedContinueBtn').hidden = true; return; }
@@ -1153,8 +1152,7 @@
         el('authTitle').textContent = 'Sartu Kotxean';
         setGate('groupsPanel');
         el('groupsFeedback').textContent = 'Kontuaren datuak kargatzen…';
-        el('bootstrapHelp').hidden = true;
-        el('refreshRoleBtn').hidden = false;
+        el('retryProfileBtn').hidden = true;
         const profileRef = db.collection('users').doc(user.uid);
         const profile = await profileRef.get();
         if (!profile.exists) {
@@ -1163,12 +1161,6 @@
         const roleDoc = await db.collection('platformRoles').doc(user.uid).get();
         platformRole = roleDoc.exists ? roleDoc.data().role : null;
         platformCanParticipate = roleDoc.exists && roleDoc.data().canParticipate === true;
-        const uidText = user.uid;
-        el('bootstrapHelp').hidden = Boolean(platformRole);
-        el('refreshRoleBtn').hidden = Boolean(platformRole);
-        if (!platformRole) {
-            el('bootstrapHelp').textContent = 'Lehen superadministratzailea eskuz sortu behar da Firebase kontsolan: Firestore → platformRoles → ID de documento = ' + uidText + ' → eremua role, string mota, balioa superadmin. Ondoren sakatu “Actualizar permisos”.';
-        }
         el('globalAdminNav').hidden = !platformRole;
         await refreshGroupsGate();
     }
@@ -1195,7 +1187,7 @@
         el('resetPasswordBtn').addEventListener('click', resetPassword);
         el('resendVerificationBtn').addEventListener('click', resendVerification);
         el('verifiedContinueBtn').addEventListener('click', refreshVerifiedUser);
-        el('refreshRoleBtn').addEventListener('click', async () => {
+        el('retryProfileBtn').addEventListener('click', async () => {
             try { await loadProfileAndGate(); }
             catch (error) { showProfileLoadError(error); }
         });
