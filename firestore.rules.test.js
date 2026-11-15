@@ -45,20 +45,22 @@ async function createGroupBatch(db, uid) {
         createdBy: uid,
         discoverable: true,
         status: 'initializing',
-        revision: 0
+        revision: 0,
+        createdAt: serverTimestamp(), updatedAt: serverTimestamp()
     });
     batch.set(doc(db, 'groups', 'group-1', 'members', uid), {
         uid,
         role: 'owner',
-        personId
+        personId, email: `${uid}@example.com`, displayName: 'Creator', joinedAt: serverTimestamp()
     });
     batch.set(doc(db, 'groups', 'group-1', 'people', personId), {
-        id: personId, name: 'Creator', active: true, linkedUid: uid
+        id: personId, name: 'Creator', active: true, linkedUid: uid, createdBy: uid,
+        opening: { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0 }
     });
     batch.set(doc(db, 'users', uid, 'groups', 'group-1'), {
         groupId: 'group-1',
         groupName: 'Kotxea',
-        role: 'owner'
+        role: 'owner', joinedAt: serverTimestamp()
     });
     return batch.commit();
 }
