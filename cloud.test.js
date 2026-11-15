@@ -14,6 +14,7 @@ async function startCloud(role, canParticipate = false, userAgent = '') {
             addEventListener(event, listener) { this.listeners[event] = listener; },
             showModal() { this.open = true; },
             close() { this.open = false; },
+            focus() { this.focused = true; },
             scrollIntoView() {},
             closest() { return this; },
             replaceChildren() {}
@@ -85,6 +86,21 @@ test('a regular account can create a group; signing out returns to login', async
     assert.equal(elements.get('authPanel').hidden, false);
     assert.equal(elements.get('groupsPanel').hidden, true);
     assert.equal(elements.get('accountMenuBtn').hidden, true);
+});
+
+test('group creation explains when the participant name is missing', async () => {
+    const { elements } = await startCloud(null);
+    elements.get('newGroupName').value = 'Donostia - Arrasate';
+    elements.get('newGroupParticipantName').value = '';
+    await elements.get('createGroupForm').listeners.submit({ preventDefault() {} });
+    assert.match(elements.get('createGroupFeedback').textContent, /Idatzi zure izena/);
+    assert.equal(elements.get('newGroupParticipantName').focused, true);
+});
+
+test('native group form validation reports the field that needs attention', async () => {
+    const { elements } = await startCloud(null);
+    elements.get('createGroupForm').listeners.invalid({ target: { id: 'newGroupName' } });
+    assert.match(elements.get('createGroupFeedback').textContent, /Idatzi taldearen izena/);
 });
 
 test('a global administrator marked as a participant can create and join groups', async () => {
