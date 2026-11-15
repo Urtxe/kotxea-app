@@ -511,7 +511,12 @@
                 el('startupWarning').hidden = true;
             },
             onStatus: setStatus
-        }).catch(error => { console.error('Kotxea startup failed', error); setStatus('Ezin izan da Firebase-ra konektatu. Saiatu berriro.'); });
+        }).catch(error => {
+            console.error('Kotxea startup failed', error);
+            const warning = el('startupWarning');
+            warning.textContent = 'Kotxea ezin izan da abiarazi: ' + (error && error.message ? error.message : 'Firebase konexioa egiaztatu.');
+            warning.hidden = false;
+        });
     }
     root.addEventListener('DOMContentLoaded', setup);
 }(typeof window !== 'undefined' ? window : globalThis));

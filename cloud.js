@@ -50,6 +50,7 @@
         el('activeGroupSelect').hidden = panelId !== 'app';
         el('accountMenuBtn').hidden = !signedIn();
         el('storageNote').hidden = panelId !== 'app';
+        el('startupWarning').hidden = true;
         if (panelId === 'app') el('appContent').hidden = false;
     }
     function showStatus(message) {
