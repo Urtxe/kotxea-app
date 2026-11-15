@@ -442,6 +442,7 @@
             const saved = await root.KotxeaCloud.persistState(previous, nextState);
             if (saved && root.KotxeaCloud.currentGroup()?.id === groupId) {
                 state = nextState; renderAll();
+                if (JSON.stringify(previous.people) !== JSON.stringify(nextState.people)) await root.KotxeaCloud.refreshManagement();
                 setStatus(saved.pending ? 'Bidaia gailuan gorde da; Firebase-rekin sinkronizatuko da konexioa dagoenean.' : 'Aldaketak Firebase-n gordeta.');
                 return saved;
             }
@@ -504,7 +505,6 @@
         const next = clone(state); next.trips = next.trips.filter(trip => trip.id !== id);
         persist(next).then(saved => { if (saved && el('editTripId').value === id) resetTripForm(); });
     }
-    function toggleAddPerson(event) { event.preventDefault(); if (readOnly || !canManageGroup()) return; const next = clone(state); const result = addPerson(next, el('personName').value); if (result.error) { alert(result.error); return; } persist(next).then(saved => { if (saved) el('personName').value = ''; }); }
     function importState(event) {
         if (!canManageGroup()) { setStatus('Taldeko administratzaile batek soilik inporta ditzake datuak.'); event.target.value = ''; return; }
         const file = event.target.files[0]; event.target.value = ''; if (!file) return;
@@ -540,14 +540,11 @@
     let readyListenersBound = false;
     function bindReadyListeners() {
         const manager = canManageGroup();
-        el('personForm').hidden = !manager;
         el('openingForm').closest('details').hidden = !manager;
         document.querySelector('.reset-tools').hidden = !manager;
         el('importFileLabel').hidden = !manager;
         el('importFile').hidden = !manager;
         el('importFile').disabled = !manager;
-        el('personName').disabled = false;
-        el('personForm').querySelectorAll('button').forEach(button => { button.disabled = false; });
         el('openingControls').disabled = false;
         el('resetToOpeningBtn').disabled = false;
         if (readyListenersBound) return;
@@ -567,9 +564,7 @@
         });
         el('bidaiariakZerrenda').addEventListener('change', renderDriverSuggestion);
         el('bidaiForm').addEventListener('submit', submitTrip);
-        el('personForm').addEventListener('submit', toggleAddPerson);
         el('openingForm').addEventListener('submit', saveOpeningBalances);
-        el('restoreDefaultsBtn').addEventListener('click', () => { if (!canManageGroup()) return; const next = clone(state); restoreDefaults(next); persist(next); });
         el('cancelEditBtn').addEventListener('click', resetTripForm);
     }
     function setup() {

@@ -709,7 +709,7 @@
             ]);
             const peopleById = new Map(people.docs.map(doc => [doc.data().id, doc.data()]));
             const invitePeople = el('invitePerson');
-            invitePeople.replaceChildren(new Option('Aukeratu pertsona', ''));
+            invitePeople.replaceChildren(new Option('Bidaiari berria gonbidatu', ''));
             people.docs.forEach(personDoc => {
                 const person = personDoc.data();
                 if (!person.linkedUid) invitePeople.add(new Option(person.name, person.id));
@@ -717,9 +717,13 @@
             const updateInvitePerson = () => {
                 const adminInvite = el('inviteRole').value === 'admin';
                 el('invitePersonField').hidden = adminInvite;
-                invitePeople.required = !adminInvite;
+                invitePeople.disabled = adminInvite;
+                el('inviteNameField').hidden = adminInvite || Boolean(invitePeople.value);
+                el('inviteName').required = !adminInvite && !invitePeople.value;
+                el('inviteName').disabled = adminInvite || Boolean(invitePeople.value);
             };
             el('inviteRole').onchange = updateInvitePerson;
+            invitePeople.onchange = updateInvitePerson;
             updateInvitePerson();
             if (requests.empty) requestList.textContent = 'Ez dago eskaera zain.';
             requests.forEach(doc => {
@@ -809,27 +813,60 @@
         if (!activeGroup || !canManageGroup()) return;
         const email = normalizeEmail(el('inviteEmail').value);
         const role = el('inviteRole').value === 'admin' ? 'admin' : 'member';
-        const personId = el('invitePerson').value || null;
-        if (!email || (role === 'member' && !personId)) return;
+        let personId = role === 'member' ? el('invitePerson').value || null : null;
+        const newName = el('inviteName').value.trim();
+        const feedback = el('inviteFeedback');
+        if (!email) { feedback.textContent = 'Idatzi gonbidatuaren posta elektronikoa.'; return; }
+        if (role === 'member' && !personId && (!newName || newName.length > 80)) {
+            feedback.textContent = 'Idatzi bidaiari berriaren izena.'; el('inviteName').focus(); return;
+        }
+        const groupId = activeGroup.id;
+        const groupName = activeGroup.name;
+        const targetRevision = revision;
+        const groupRef = groupReference(groupId);
+        const submit = el('createInviteBtn');
+        submit.disabled = true;
         try {
             let personName = '';
-            if (personId) {
-                const person = (await groupReference(activeGroup.id).collection('people').doc(safeDocId(personId)).get()).data();
-                if (!person || person.linkedUid) throw new Error('Pertsona hori jada beste kontu bati lotuta dago.');
-                personName = person.name;
+            let newPerson = null;
+            if (role === 'member' && !personId) {
+                const people = await groupRef.collection('people').get();
+                if (people.docs.some(item => item.data().name.trim().toLocaleLowerCase() === newName.toLocaleLowerCase())) {
+                    throw new Error('Izen hori duen pertsona badago. Aukeratu haren fitxa edo erabili beste izen bat.');
+                }
+                personId = groupRef.collection('people').doc().id;
+                personName = newName;
+                newPerson = { id: personId, name: newName, active: true };
             }
             const inviteRef = db.collection('invitations').doc();
             const expiresAt = firebase.firestore.Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
-            await inviteRef.set({
-                groupId: activeGroup.id, groupName: activeGroup.name, email, personId, personName,
-                role, status: 'pending', createdBy: user.uid,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(), expiresAt
+            await db.runTransaction(async transaction => {
+                const group = await transaction.get(groupRef);
+                if (!group.exists || group.data().status !== 'active') throw new Error('Talde hau ez dago erabilgarri.');
+                if (newPerson && Number(group.data().revision || 0) !== targetRevision) {
+                    throw Object.assign(new Error('Taldeko datuak aldatu dira.'), { code: 'failed-precondition' });
+                }
+                const personRef = personId ? groupRef.collection('people').doc(safeDocId(personId)) : null;
+                if (personRef && !newPerson) {
+                    const existing = await transaction.get(personRef);
+                    if (!existing.exists || existing.data().linkedUid) throw new Error('Pertsona hori jada beste kontu bati lotuta dago.');
+                    personName = existing.data().name;
+                }
+                if (newPerson) {
+                    transaction.set(personRef, personDocument(newPerson, { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0 }));
+                    transaction.update(groupRef, { revision: targetRevision + 1, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+                }
+                transaction.set(inviteRef, {
+                    groupId, groupName, email, personId, personName,
+                    role, status: 'pending', createdBy: user.uid,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(), expiresAt
+                });
             });
+            if (activeGroup?.id !== groupId) return;
             const inviteUrl = new URL(root.location.href);
             inviteUrl.search = '';
             inviteUrl.hash = '';
             inviteUrl.searchParams.set('invite', inviteRef.id);
-            const feedback = el('inviteFeedback');
             feedback.replaceChildren();
             const text = document.createElement('p'); text.textContent = 'Esteka sortu da. Bidali eskuz gonbidatutako pertsonari; bere helbidearekin saioa hasi behar du.';
             const link = document.createElement('a'); link.href = inviteUrl.toString(); link.textContent = 'Gonbidapena ireki'; link.target = '_blank'; link.rel = 'noopener';
@@ -837,8 +874,17 @@
             copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(inviteUrl.toString()); copy.textContent = 'Kopiatuta'; } catch (_) { feedback.append(document.createTextNode(' Kopiatu esteka: ' + inviteUrl.toString())); } });
             feedback.append(text, link, copy);
             el('inviteForm').reset();
+            if (newPerson) {
+                try { await loadActiveState(); }
+                catch (error) { showStatus('Gonbidapena sortu da, baina ezin izan da bidaiarien zerrenda berritu: ' + safeError(error)); }
+            }
             await loadGroupManagement();
-        } catch (error) { el('inviteFeedback').textContent = 'Ezin izan da gonbidapena sortu: ' + safeError(error); }
+        } catch (error) {
+            feedback.textContent = 'Ezin izan da gonbidapena sortu: ' + safeError(error);
+            if (error.code === 'failed-precondition' && activeGroup?.id === groupId) {
+                try { await loadActiveState(); } catch (refreshError) { showStatus(safeError(refreshError)); }
+            }
+        } finally { submit.disabled = false; }
     }
     async function revokeInvite(inviteId) {
         if (!activeGroup || !canManageGroup()) return;

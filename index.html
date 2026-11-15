@@ -216,12 +216,7 @@
         </div>
         <ul id="groupList" class="group-list" aria-label="Taldeko pertsonak"></ul>
         <p class="help">Pertsona guztiek gidatu dezakete. Bidaia duen pertsona bat kentzean, haren historia eta balantzea gordetzen dira; ez da bidaia berrien aukeretan agertuko.</p>
-        <form id="personForm" class="person-tools">
-            <label for="personName">Pertsona berria</label>
-            <input type="text" id="personName" name="personName" maxlength="80" required autocomplete="off" disabled>
-            <button type="submit" disabled>Pertsona gehitu</button>
-            <button type="button" id="restoreDefaultsBtn" class="secondary-button" disabled>Hasierako lau pertsonak gehitu / aktibatu</button>
-        </form>
+        <p class="help">Bidaiari berriak taldearen administraziotik gonbidatzen dira, izena eta posta elektronikoa erabiliz.</p>
         <details class="settings-panel">
             <summary>Hasierako saldoak konfiguratu</summary>
             <p id="openingHelp">Sartu Excel-ean pertsona bakoitzak duen saldoa, positiboa edo negatiboa (adibidez: +2,50 edo -1,25). Saldo honi aplikazioko bidaien balantzea gehitzen zaio. Ez du aurreko bidaiarik edo kontagailurik sortzen. Gero ere zuzendu dezakezu; erregistratutako bidaiak mantenduko dira.</p>
@@ -239,8 +234,9 @@
             <form id="inviteForm" class="gate-form">
                 <div class="field"><label for="inviteEmail">Gonbidatu posta elektronikoarekin</label><input type="email" id="inviteEmail" required autocomplete="email"></div>
                 <div class="field"><label for="inviteRole">Taldeko baimena</label><select id="inviteRole"><option value="member">Bidaiaria</option><option value="admin">Taldeko administratzailea</option></select></div>
-                <div class="field" id="invitePersonField"><label for="invitePerson">Taldeko pertsona</label><select id="invitePerson"></select><p class="help">Bidaiatzen ez duen administratzailearentzat, utzi hutsik.</p></div>
-                <button type="submit">Gonbidapen-esteka sortu</button>
+                <div class="field" id="invitePersonField"><label for="invitePerson">Taldeko pertsona</label><select id="invitePerson" aria-describedby="invitePersonHelp"></select><p id="invitePersonHelp" class="help">Gonbidatu bidaiari berri bat edo lotu aurretik inportatutako fitxa bat, haren historia eta saldoa gordetzeko.</p></div>
+                <div class="field" id="inviteNameField"><label for="inviteName">Bidaiari berriaren izena</label><input id="inviteName" maxlength="80" autocomplete="name"></div>
+                <button type="submit" id="createInviteBtn">Gonbidapen-esteka sortu</button>
             </form>
             <p id="inviteFeedback" class="help" role="status"></p>
             <h3>Sartzeko eskaerak</h3><ul id="groupRequestsList" class="group-picker-list"></ul>
@@ -315,7 +311,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
     <script src="./firebase-config.js"></script>
-    <script src="./script.js?v=14"></script>
-    <script src="./cloud.js?v=17"></script>
+    <script src="./script.js?v=15"></script>
+    <script src="./cloud.js?v=18"></script>
 </body>
 </html>
