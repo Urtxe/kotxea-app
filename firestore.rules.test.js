@@ -74,6 +74,29 @@ test('a verified regular account can create a group and join as its owner partic
     await assertSucceeds(createGroupBatch(db, uid));
 });
 
+test('a verified regular account can finish setting up its new group', async () => {
+    const uid = 'creator-user';
+    await seedAccount(uid, null);
+    const db = testEnv.authenticatedContext(uid, {
+        email: `${uid}@example.com`,
+        email_verified: true
+    }).firestore();
+
+    await assertSucceeds(createGroupBatch(db, uid));
+
+    const timestamp = new Date();
+    const finish = writeBatch(db);
+    finish.update(doc(db, 'groups/group-1'), { status: 'active', updatedAt: timestamp });
+    finish.set(doc(db, 'directoryGroups/group-1'), {
+        groupId: 'group-1', name: 'Kotxea', discoverable: true, status: 'active', updatedAt: timestamp
+    });
+    finish.set(doc(db, 'users', uid, 'groups', 'group-1'), {
+        groupId: 'group-1', groupName: 'Kotxea', role: 'owner', joinedAt: timestamp
+    }, { merge: true });
+
+    await assertSucceeds(finish.commit());
+});
+
 test('an unverified account cannot create a group', async () => {
     const uid = 'unverified-user';
     await seedAccount(uid, null);
