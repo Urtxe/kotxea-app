@@ -175,66 +175,78 @@
     }
     async function createGroup(event) {
         event.preventDefault();
-        if (!signedIn() || !canCreateGroups()) return;
-        if (!user.emailVerified) { el('createGroupFeedback').textContent = 'Egiaztatu posta elektronikoa taldea sortu aurretik.'; return; }
+        const feedback = el('createGroupFeedback');
+        feedback.textContent = '';
+        if (!signedIn()) { feedback.textContent = 'Hasi saioa berriro taldea sortzeko.'; return; }
+        if (!canCreateGroups()) { feedback.textContent = 'Kontu honek ezin du talderik sortu. Egiaztatu kontuko baimenak.'; return; }
+        if (!user.emailVerified) { feedback.textContent = 'Egiaztatu posta elektronikoa taldea sortu aurretik.'; return; }
         const name = el('newGroupName').value.trim();
         const creatorName = el('newGroupParticipantName').value.trim();
-        const invitees = Array.from(document.querySelectorAll('.initial-invite-row')).map(row => ({
-            name: row.querySelector('[data-field="name"]').value.trim(),
-            email: normalizeEmail(row.querySelector('[data-field="email"]').value)
-        })).filter(invitee => invitee.name || invitee.email);
-        if (!name || !creatorName) return;
-        if (invitees.some(invitee => !invitee.name || !invitee.email)) {
-            el('createGroupFeedback').textContent = 'Gonbidapen bakoitzean, sartu bidaiariaren izena eta posta elektronikoa.';
-            return;
-        }
-        const inviteEmails = new Set();
-        for (const invitee of invitees) {
-            if (inviteEmails.has(invitee.email)) { el('createGroupFeedback').textContent = 'Ez errepikatu posta elektroniko bat gonbidapenetan.'; return; }
-            inviteEmails.add(invitee.email);
-        }
-        const wantsImport = el('importLocalData').checked && !root.localStorage.getItem('kotxeaImportCompleted') && hasLocalLegacyData();
-        const imported = wantsImport ? localLegacyState() : { state: blankGroupState() };
-        if (imported.error) { el('createGroupFeedback').textContent = imported.error; return; }
-        const initialState = imported.state || blankGroupState();
-        if (!api.validateState(initialState)) { el('createGroupFeedback').textContent = 'Gailuko bidaia-datuak ezin dira inportatu; deskargatu kopia JSON bat eta berrikusi.'; return; }
-        const existingCreator = initialState.people.find(person => person.name.trim().toLocaleLowerCase() === creatorName.toLocaleLowerCase());
-        const creatorPerson = existingCreator || { id: db.collection('groups').doc().id, name: creatorName, active: true };
-        if (!existingCreator) {
-            initialState.people.push(creatorPerson);
-            initialState.opening[creatorPerson.id] = { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0 };
-        }
-        creatorPerson.linkedUid = user.uid;
-        const invitedPeople = [];
-        for (const invitee of invitees) {
-            if (initialState.people.some(person => person.name.trim().toLocaleLowerCase() === invitee.name.toLocaleLowerCase())) {
-                el('createGroupFeedback').textContent = 'Badago izen hori duen bidaiari bat. Erabili izen desberdin bat.';
+        if (!name) { feedback.textContent = 'Idatzi taldearen izena.'; el('newGroupName').focus(); return; }
+        if (!creatorName) { feedback.textContent = 'Idatzi zure izena taldeko bidaiari gisa.'; el('newGroupParticipantName').focus(); return; }
+        const submit = el('createGroupForm').querySelector('button[type="submit"]');
+        let submitDisabled = false;
+        let groupCreated = false;
+        let groupActivated = false;
+        let migrationKey = '';
+        try {
+            const invitees = Array.from(document.querySelectorAll('.initial-invite-row')).map(row => ({
+                name: row.querySelector('[data-field="name"]').value.trim(),
+                email: normalizeEmail(row.querySelector('[data-field="email"]').value)
+            })).filter(invitee => invitee.name || invitee.email);
+            if (invitees.some(invitee => !invitee.name || !invitee.email)) {
+                feedback.textContent = 'Gonbidapen bakoitzean, sartu bidaiariaren izena eta posta elektronikoa.';
                 return;
             }
-            const person = { id: db.collection('groups').doc().id, name: invitee.name, active: true };
-            initialState.people.push(person);
-            initialState.opening[person.id] = { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0 };
-            invitedPeople.push({ ...invitee, person });
-        }
-        if (!api.validateState(initialState)) { el('createGroupFeedback').textContent = 'Ezin izan da bidaiarien zerrenda balioztatu.'; return; }
-        if (wantsImport && !root.confirm('Gailuko historia eta hasierako saldoak talde berrira kopiatuko dira. Jatorrizko datuak gailuan gordeko dira. Jarraitu?')) return;
+            const inviteEmails = new Set();
+            for (const invitee of invitees) {
+                if (inviteEmails.has(invitee.email)) { feedback.textContent = 'Ez errepikatu posta elektroniko bat gonbidapenetan.'; return; }
+                inviteEmails.add(invitee.email);
+            }
+            const wantsImport = el('importLocalData').checked && !root.localStorage.getItem('kotxeaImportCompleted') && hasLocalLegacyData();
+            const imported = wantsImport ? localLegacyState() : { state: blankGroupState() };
+            if (imported.error) { feedback.textContent = imported.error; return; }
+            const initialState = imported.state || blankGroupState();
+            if (!api.validateState(initialState)) { feedback.textContent = 'Gailuko bidaia-datuak ezin dira inportatu; deskargatu kopia JSON bat eta berrikusi.'; return; }
+            const existingCreator = initialState.people.find(person => person.name.trim().toLocaleLowerCase() === creatorName.toLocaleLowerCase());
+            const creatorPerson = existingCreator || { id: db.collection('groups').doc().id, name: creatorName, active: true };
+            if (!existingCreator) {
+                initialState.people.push(creatorPerson);
+                initialState.opening[creatorPerson.id] = { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0 };
+            }
+            creatorPerson.linkedUid = user.uid;
+            const invitedPeople = [];
+            for (const invitee of invitees) {
+                if (initialState.people.some(person => person.name.trim().toLocaleLowerCase() === invitee.name.toLocaleLowerCase())) {
+                    feedback.textContent = 'Badago izen hori duen bidaiari bat. Erabili izen desberdin bat.';
+                    return;
+                }
+                const person = { id: db.collection('groups').doc().id, name: invitee.name, active: true };
+                initialState.people.push(person);
+                initialState.opening[person.id] = { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0 };
+                invitedPeople.push({ ...invitee, person });
+            }
+            if (!api.validateState(initialState)) { feedback.textContent = 'Ezin izan da bidaiarien zerrenda balioztatu.'; return; }
+            if (wantsImport && !root.confirm('Gailuko historia eta hasierako saldoak talde berrira kopiatuko dira. Jatorrizko datuak gailuan gordeko dira. Jarraitu?')) {
+                feedback.textContent = 'Taldea sortzea bertan behera utzi da; ez da daturik gorde.';
+                return;
+            }
 
-        const submit = el('createGroupForm').querySelector('button[type="submit"]');
-        submit.disabled = true;
-        el('createGroupFeedback').textContent = 'Taldea eta datuak prestatzen...';
-        const groupId = db.collection('groups').doc().id;
-        const groupData = {
-            name,
-            ownerUid: user.uid,
-            createdBy: user.uid,
-            discoverable: el('newGroupDiscoverable').checked,
-            status: 'initializing',
-            revision: 0,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        const migrationKey = MIGRATION_KEY + ':' + groupId;
-        try {
+            submit.disabled = true;
+            submitDisabled = true;
+            feedback.textContent = 'Taldea eta datuak prestatzen...';
+            const groupId = db.collection('groups').doc().id;
+            const groupData = {
+                name,
+                ownerUid: user.uid,
+                createdBy: user.uid,
+                discoverable: el('newGroupDiscoverable').checked,
+                status: 'initializing',
+                revision: 0,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+            migrationKey = MIGRATION_KEY + ':' + groupId;
             root.localStorage.setItem(migrationKey, JSON.stringify(initialState));
             const batch = db.batch();
             batch.set(groupReference(groupId), groupData);
@@ -251,8 +263,11 @@
                 groupId, groupName: name, role: 'owner', joinedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
             await batch.commit();
+            groupCreated = true;
+            feedback.textContent = 'Taldea sortu da; bidaiariak eta datuak gordetzen...';
             await writeInitialState(groupId, initialState);
             await finishGroupSetup(groupId, groupData);
+            groupActivated = true;
             root.localStorage.removeItem(migrationKey);
             root.localStorage.setItem('kotxeaImportCompleted', '1');
             const inviteLinks = [];
@@ -278,7 +293,7 @@
             }
             el('createGroupForm').reset();
             document.querySelectorAll('.initial-invite-row').forEach((row, index) => { if (index > 0) row.remove(); });
-            el('createGroupFeedback').textContent = inviteLinks.length ? 'Taldea prest dago. Gonbidapen-estekak agertzen dira taldeko administrazioan.' : 'Taldea prest dago.';
+            feedback.textContent = inviteLinks.length ? 'Taldea prest dago. Gonbidapen-estekak agertzen dira taldeko administrazioan.' : 'Taldea prest dago.';
             await openGroup(groupId);
             if (inviteLinks.length) {
                 el('inviteFeedback').replaceChildren();
@@ -292,10 +307,14 @@
             if (inviteIssue) showStatus(inviteIssue);
         } catch (error) {
             console.error('Kotxea group setup failed', error);
-            el('createGroupFeedback').textContent = 'Taldea sortzea ez da amaitu: ' + safeError(error) + ' Ez sortu beste talde bat; saiatu inportazioa talde-zerrendatik jarraitzen.';
+            feedback.textContent = groupActivated
+                ? 'Taldea prest dago, baina ezin izan da pantaila ireki. Ireki taldea zure taldeen zerrendatik. Xehetasuna: ' + safeError(error)
+                : groupCreated
+                    ? 'Taldea sortu da, baina konfigurazioa osatu gabe dago. Ez sortu beste talde bat; saiatu inportazioa talde-zerrendatik jarraitzen. Xehetasuna: ' + safeError(error)
+                    : 'Taldea ezin izan da sortu: ' + safeError(error) + ' Egiaztatu konexioa eta baimena, eta saiatu berriro.';
             showStatus(safeError(error));
         } finally {
-            submit.disabled = false;
+            if (submitDisabled) submit.disabled = false;
         }
     }
     function addShareableLink(container, url) {
@@ -1192,6 +1211,14 @@
             catch (error) { showProfileLoadError(error); }
         });
         el('createGroupForm').addEventListener('submit', createGroup);
+        el('createGroupForm').addEventListener('invalid', event => {
+            const field = event.target;
+            el('createGroupFeedback').textContent = field.id === 'newGroupName'
+                ? 'Idatzi taldearen izena.'
+                : field.id === 'newGroupParticipantName'
+                    ? 'Idatzi zure izena taldeko bidaiari gisa.'
+                    : 'Berrikusi taldearen derrigorrezko eremuak.';
+        }, true);
         let initialInviteCount = 1;
         el('addInitialInviteBtn').addEventListener('click', () => {
             initialInviteCount += 1;
