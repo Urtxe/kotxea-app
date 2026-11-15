@@ -54,3 +54,4 @@
 - Si cambias los archivos del shell, actualiza el inventario de `scripts/prepare-hosting.js` y comprueba las referencias de versión/cache en `index.html` y `service-worker.js`.
 - El workflow solo corre automáticamente en `main`; antes de integrar a `develop`, ejecuta localmente los checks focalizados necesarios.
 
+\n
