@@ -6,10 +6,54 @@ const assert = require('node:assert/strict');
 const { getAuth } = require('firebase-admin/auth');
 const { getFirestore } = require('firebase-admin/firestore');
 const functions = require('./index.js');
+const { initializeApp, deleteApp } = require('firebase/app');
+const { getAuth: getClientAuth, connectAuthEmulator, signInWithEmailAndPassword, reload, getIdTokenResult } = require('firebase/auth');
+const { getFirestore: getClientFirestore, connectFirestoreEmulator, doc: clientDoc, writeBatch: clientWriteBatch } = require('firebase/firestore');
 
 const db = getFirestore();
 const auth = getAuth();
 let adminUid;
+
+test('reloading a verified password account still requires refreshing its earlier ID token', async () => {
+    const uid = `verification-${randomUUID()}`;
+    const email = `${uid}@example.com`;
+    const password = 'emulator-only-password';
+    await auth.createUser({ uid, email, password, emailVerified: false });
+    const app = initializeApp({ projectId: 'demo-kotxea', apiKey: 'demo-key' }, uid);
+    try {
+        const clientAuth = getClientAuth(app);
+        connectAuthEmulator(clientAuth, 'http://' + process.env.FIREBASE_AUTH_EMULATOR_HOST, { disableWarnings: true });
+        const { user } = await signInWithEmailAndPassword(clientAuth, email, password);
+        assert.equal((await getIdTokenResult(user)).claims.email_verified, false);
+        await auth.updateUser(uid, { emailVerified: true });
+        await reload(user);
+        assert.equal(user.emailVerified, true);
+        assert.equal((await getIdTokenResult(user)).claims.email_verified, false);
+        const clientDb = getClientFirestore(app);
+        const [host, port] = process.env.FIRESTORE_EMULATOR_HOST.split(':');
+        connectFirestoreEmulator(clientDb, host, Number(port));
+        const createGroup = () => {
+            const batch = clientWriteBatch(clientDb);
+            batch.set(clientDoc(clientDb, 'groups', uid), {
+                name: 'Donostia - Arrasate', ownerUid: uid, createdBy: uid,
+                status: 'initializing', discoverable: true, revision: 0
+            });
+            batch.set(clientDoc(clientDb, 'groups', uid, 'members', uid), { uid, role: 'owner', personId: uid });
+            batch.set(clientDoc(clientDb, 'groups', uid, 'people', uid), {
+                id: uid, name: 'Creator', active: true, linkedUid: uid, createdBy: uid,
+                opening: { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0 }
+            });
+            batch.set(clientDoc(clientDb, 'users', uid, 'groups', uid), { groupId: uid, groupName: 'Donostia - Arrasate', role: 'owner' });
+            return batch.commit();
+        };
+        await assert.rejects(createGroup(), error => error.code === 'permission-denied');
+        assert.equal((await getIdTokenResult(user, true)).claims.email_verified, true);
+        await createGroup();
+        assert.equal((await db.collection('groups').doc(uid).get()).data().ownerUid, uid);
+    } finally {
+        await deleteApp(app);
+    }
+});
 
 before(async () => {
     adminUid = `admin-${randomUUID()}`;
