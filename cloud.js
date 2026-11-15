@@ -1116,7 +1116,7 @@
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 await result.user.sendEmailVerification(authActionSettings());
-                updateAuthFeedback('Egiaztapen-mezua bidali dizugu. Egiaztatu posta eta itzuli Kotxeara.');
+                updateAuthFeedback('Egiaztapen-mezua bidali dizugu. Ez baduzu aurkitzen, begiratu nahi ez den posta edo spam karpetan ere; baliteke han egotea. Egiaztatu posta eta itzuli Kotxeara.');
                 el('resendVerificationBtn').hidden = false;
                 el('verifiedContinueBtn').hidden = false;
             } else {
@@ -1132,7 +1132,7 @@
     }
     async function resendVerification() {
         if (!auth.currentUser || auth.currentUser.emailVerified) return;
-        try { await auth.currentUser.sendEmailVerification(authActionSettings()); updateAuthFeedback('Egiaztapen-mezua berriro bidali da.'); }
+        try { await auth.currentUser.sendEmailVerification(authActionSettings()); updateAuthFeedback('Egiaztapen-mezua berriro bidali da. Ez baduzu aurkitzen, begiratu nahi ez den posta edo spam karpetan ere; baliteke han egotea.'); }
         catch (error) { updateAuthFeedback(safeError(error)); }
     }
     async function refreshVerifiedUser() {
@@ -1163,7 +1163,7 @@
             stopPresenceTracking();
             setGate('authPanel');
             el('authTitle').textContent = 'Egiaztatu zure posta elektronikoa';
-            updateAuthFeedback('Bidali dizugun estekarekin egiaztatu kontua, eta sakatu “Posta egiaztatu dut”.');
+            updateAuthFeedback('Bidali dizugun estekarekin egiaztatu kontua, eta sakatu “Posta egiaztatu dut”. Ez baduzu mezua aurkitzen, begiratu nahi ez den posta edo spam karpetan ere; baliteke han egotea.');
             el('resendVerificationBtn').hidden = false; el('verifiedContinueBtn').hidden = false;
             return;
         }
