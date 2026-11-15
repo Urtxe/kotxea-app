@@ -43,11 +43,11 @@ El primer superadministrador se asigna manualmente para impedir que una cuenta n
 
 1. Abre Kotxea y registra/inicia sesión con la cuenta de Mikel.
 2. En Firebase Console, abre el proyecto `kotxea-urtxe` → Firestore Database → Datos.
-3. Crea la colección `platformRoles` y un documento cuyo ID sea el UID de Mikel. La app muestra el UID en la pantalla de grupos.
+3. Crea la colección `platformRoles` y un documento cuyo ID sea el UID de Mikel. Puedes consultar el UID de la cuenta en Firebase Authentication.
 4. Añade el campo `role`, tipo `string`, valor `superadmin`.
-5. Vuelve a Kotxea y pulsa **Actualizar permisos**.
+5. Vuelve a Kotxea e inicia sesión de nuevo para cargar el permiso.
 
-La consola Firebase permite esta primera operación aunque las reglas de cliente solo permitan al superadministrador conceder el rol `creator`.
+La consola Firebase permite esta primera operación; las cuentas normales no pueden concederse roles globales.
 
 ## Crear el grupo inicial y añadir a la familia
 
