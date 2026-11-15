@@ -37,6 +37,7 @@
 - `deletedAccounts/{uid}` es un tombstone permanente que invalida tokens antiguos en `firestore.rules` y evita restaurar roles o membresías. Créalo antes de limpiar una cuenta y nunca lo elimines durante reintentos.
 - Una cuenta puede pertenecer a varios grupos; los roles `owner` y `admin` gestionan un grupo. La membresía y los roles deben validarse también en las reglas, no solo ocultando controles de interfaz.
 - Las solicitudes de acceso y la aceptación de invitaciones requieren correo verificado. Las invitaciones están vinculadas al correo destinatario.
+- El alta manual de viajeros y la restauración de las cuatro personas locales no se muestran en la interfaz. Para invitar a un viajero nuevo, nombre y correo crean su ficha y la invitación en una operación atómica; también se puede vincular una ficha importada sin perder su historial o saldo. La cuenta se vincula al aceptar la invitación.
 - La creación de un grupo pasa por `initializing` y luego `active`. Si falla una importación parcial, conserva la opción de reanudarla y evita crear un grupo duplicado o descartar la copia local.
 - La migración puede leer las claves locales `kotxeaEstado`, `kotxeaDatos` y `kotxeaHistoriala`. Valida los datos antes de guardarlos y conserva la copia de origen hasta que la importación termine correctamente.
 - Cada registro sigue contando como un viaje/día completo; no separes ida y vuelta como viajes distintos. Respeta el cálculo de saldos iniciales y el historial al modificar el modelo.
