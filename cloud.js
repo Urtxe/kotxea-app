@@ -30,6 +30,7 @@
     let deferredInstallPrompt = null;
     let adminUsers = [];
     let discoverableSearch = 0;
+    let discoverableGroups = [];
 
     function el(id) { return document.getElementById(id); }
     function signedIn() { return Boolean(user && user.uid); }
@@ -428,6 +429,7 @@
     async function refreshDiscoverableGroups() {
         const search = ++discoverableSearch;
         const list = el('discoverableGroupsList');
+        discoverableGroups = [];
         list.replaceChildren();
         if (!signedIn() || !user.emailVerified) {
             list.textContent = 'Taldeak bilatu aurretik, egiaztatu posta elektronikoa.';
@@ -435,21 +437,28 @@
         }
         try {
             const snapshot = await db.collection('directoryGroups').where('discoverable', '==', true).get();
-            const needle = el('groupSearch').value.trim().toLocaleLowerCase('eu-ES');
             const groups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-                .filter(group => group.status === 'active' && (!needle || group.name.toLocaleLowerCase('eu-ES').includes(needle)));
+                .filter(group => group.status === 'active');
             const requests = await db.collection('users').doc(user.uid).collection('requests').get();
             const requested = new Set(requests.docs.filter(doc => doc.data().status === 'pending').map(doc => doc.data().groupId));
             const myGroups = await db.collection('users').doc(user.uid).collection('groups').get();
             const memberIds = new Set(myGroups.docs.map(doc => doc.id));
             if (search !== discoverableSearch) return;
-            list.replaceChildren();
-            if (!groups.length) list.textContent = needle ? 'Ez da talderik aurkitu.' : 'Ez dago bilaketa publikoan agertzen den talderik.';
-            groups.forEach(group => {
-                if (memberIds.has(group.id)) return;
-                addGroupButton(list, group, { join: true, requested: requested.has(group.id) });
-            });
-        } catch (error) { list.textContent = safeError(error); }
+            discoverableGroups = groups.filter(group => !memberIds.has(group.id)).map(group => ({ ...group, requested: requested.has(group.id) }));
+            renderDiscoverableGroups();
+        } catch (error) { if (search === discoverableSearch) list.textContent = safeError(error); }
+    }
+    function renderDiscoverableGroups() {
+        const list = el('discoverableGroupsList');
+        const needle = el('groupSearch').value.trim().toLocaleLowerCase('eu-ES');
+        list.replaceChildren();
+        if (needle.length > 0 && needle.length < 3) {
+            list.textContent = 'Idatzi gutxienez 3 letra taldeak bilatzeko.';
+            return;
+        }
+        const groups = discoverableGroups.filter(group => !needle || group.name.toLocaleLowerCase('eu-ES').includes(needle));
+        if (!groups.length) list.textContent = needle ? 'Ez da talderik aurkitu.' : 'Ez dago bilaketa publikoan agertzen den talderik.';
+        groups.forEach(group => addGroupButton(list, group, { join: true, requested: group.requested }));
     }
     async function requestJoin(group) {
         if (!user.emailVerified || !canCreateGroups()) { showStatus('Egiaztatu zure posta elektronikoa eta zure baimena talde batean sartzeko eskaera bidali aurretik.'); return; }
@@ -1318,6 +1327,7 @@
             el('initialInviteRows').append(row);
         });
         el('groupSearchForm').addEventListener('submit', event => { event.preventDefault(); refreshDiscoverableGroups(); });
+        el('groupSearch').addEventListener('input', renderDiscoverableGroups);
         el('signOutFromGroupsBtn').addEventListener('click', signOut);
         el('accountMenuBtn').addEventListener('click', showGroupsGate);
         el('activeGroupSelect').addEventListener('change', event => openGroup(event.target.value));

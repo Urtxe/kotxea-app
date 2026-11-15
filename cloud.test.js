@@ -265,6 +265,29 @@ test('the first join-request click creates its private index and displays visibl
     assert.equal(elements.get('appStatus').hidden, false);
 });
 
+test('live group search starts at three letters, narrows on input and restores all when cleared', async () => {
+    const documents = [
+        ['directoryGroups/donostia', { name: 'Donostia - Arrasate', status: 'active' }],
+        ['directoryGroups/durango', { name: 'Durango - Bilbo', status: 'active' }]
+    ];
+    const { elements } = await startCloud(null, false, '', { documents });
+    const field = elements.get('groupSearch'); const list = elements.get('discoverableGroupsList');
+    assert.equal(list.children.length, 2);
+    field.value = 'do'; field.listeners.input();
+    assert.equal(list.children.length, 0);
+    assert.match(list.textContent, /gutxienez 3/);
+    field.value = 'DON'; field.listeners.input();
+    assert.equal(list.children.length, 1);
+    assert.equal(list.children[0].children[0].children[0].textContent, 'Donostia - Arrasate');
+    field.value = 'donos'; field.listeners.input();
+    assert.equal(list.children.length, 1);
+    field.value = 'donosx'; field.listeners.input();
+    assert.equal(list.children.length, 0);
+    assert.match(list.textContent, /Ez da talderik aurkitu/);
+    field.value = ''; field.listeners.input();
+    assert.equal(list.children.length, 2);
+});
+
 test('a failed sign-out keeps the current session and displays its error', async () => {
     const { elements, cloud } = await startCloud(null, false, '', { signOutError: new Error('Connection failed') });
     await elements.get('signOutFromGroupsBtn').listeners.click();
