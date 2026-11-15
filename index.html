@@ -13,7 +13,7 @@
             if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
         } catch (_) {}
     </script>
-    <link rel="stylesheet" href="styles.css?v=19">
+    <link rel="stylesheet" href="styles.css?v=20">
 </head>
 <body>
     <div class="app-shell">
@@ -188,6 +188,18 @@
             </div>
             <button type="button" id="clearHistoryFilters" class="secondary-button">Iragazkiak garbitu</button>
         </div>
+        <section class="history-calendar" aria-labelledby="historyCalendarTitle">
+            <div class="history-calendar-heading">
+                <button type="button" id="historyMonthPrev" class="secondary-button" aria-label="Aurreko hilabetea">‹</button>
+                <h3 id="historyCalendarTitle" aria-live="polite"></h3>
+                <button type="button" id="historyMonthNext" class="secondary-button" aria-label="Hurrengo hilabetea">›</button>
+            </div>
+            <div class="history-calendar-weekdays" aria-hidden="true">
+                <span title="Astelehena">Al</span><span title="Asteartea">Ar</span><span title="Asteazkena">Az</span><span title="Osteguna">Og</span><span title="Ostirala">Or</span><span title="Larunbata">La</span><span title="Igandea">Ig</span>
+            </div>
+            <div id="historyCalendarDays" class="history-calendar-days"></div>
+            <p class="history-calendar-legend"><span aria-hidden="true"></span> Berdez markatutako egunek bidaia-erregistroak dituzte. Zenbakiak uneko pertsona-iragazkiarekin bat datozen erregistro kopurua adierazten du; hautatu eguna xehetasunak ikusteko.</p>
+        </section>
         <p id="historyFeedback" class="help" role="status"></p>
         <div id="historyTable" class="table-scroll" role="region" aria-label="Bidaia-Historiala" tabindex="0">
             <table id="historialaTaula">
@@ -304,6 +316,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
     <script src="./firebase-config.js"></script>
     <script src="./cloud.js?v=14"></script>
-    <script src="./script.js?v=12"></script>
+    <script src="./script.js?v=13"></script>
 </body>
 </html>
