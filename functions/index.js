@@ -67,8 +67,6 @@ exports.listAuthUsers = onCall(functionsConfig, async request => {
                 firstName: firstName || (!lastName ? parsedFirstName : ''),
                 lastName: lastName || (!firstName ? legacyParts.join(' ') : ''),
                 createdAt: user.metadata.creationTime || null,
-                lastLoginAt: user.metadata.lastSignInTime || null,
-                lastSignInAt: user.metadata.lastSignInTime || null,
                 lastSeenAt,
                 emailVerified: user.emailVerified,
                 disabled: user.disabled,

@@ -57,9 +57,7 @@ test('user directory separates legacy first and last names and includes auth tim
     assert.equal(listed.firstName, 'Mikel');
     assert.equal(listed.lastName, 'Urtxegi Garcia');
     assert.ok(Number.isFinite(Date.parse(listed.createdAt)));
-    assert.ok(Number.isFinite(Date.parse(listed.lastLoginAt)) || listed.lastLoginAt === null);
     assert.equal(listed.lastSeenAt, seenAt.toISOString());
-    assert.ok(listed.lastSignInAt === null || Number.isFinite(Date.parse(listed.lastSignInAt)));
 });
 
 test('deleting a group owner transfers ownership and preserves its trip history', async () => {

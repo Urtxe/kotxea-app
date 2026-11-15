@@ -13,7 +13,7 @@
             if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
         } catch (_) {}
     </script>
-    <link rel="stylesheet" href="styles.css?v=14">
+    <link rel="stylesheet" href="styles.css?v=16">
 </head>
 <body>
     <div class="app-shell">
@@ -100,14 +100,13 @@
                     <div class="field"><label for="adminUserLastNameFilter">Apellidos</label><input id="adminUserLastNameFilter" type="search" autocomplete="off" placeholder="Buscar apellidos"></div>
                     <div class="field"><label for="adminUserRoleFilter">Tipo de usuario</label><select id="adminUserRoleFilter"><option value="">Todos</option><option value="normal">Normal</option><option value="superadmin">Administrador global</option><option value="deletionPending">Borrado pendiente</option></select></div>
                     <fieldset class="admin-date-filter"><legend>Fecha de alta</legend><label><span class="sr-only">Desde fecha de alta</span><input id="adminCreatedFrom" type="date"></label><label><span class="sr-only">Hasta fecha de alta</span><input id="adminCreatedTo" type="date"></label></fieldset>
-                    <fieldset class="admin-date-filter"><legend>Fecha del último login</legend><label><span class="sr-only">Desde fecha del último login</span><input id="adminLastSignInFrom" type="date"></label><label><span class="sr-only">Hasta fecha del último login</span><input id="adminLastSignInTo" type="date"></label></fieldset>
                     <fieldset class="admin-date-filter"><legend>Última conexión</legend><label><span class="sr-only">Desde última conexión</span><input id="adminLastSeenFrom" type="date"></label><label><span class="sr-only">Hasta última conexión</span><input id="adminLastSeenTo" type="date"></label></fieldset>
                     <button id="clearAdminUserFilters" type="reset" class="secondary-button">Limpiar filtros</button>
                 </form>
                 <p class="help admin-presence-help">El estado se actualiza cada minuto; se muestra «En línea» cuando hay actividad en los últimos dos minutos.</p>
                 <div class="admin-table-scroll">
                     <table class="admin-users-table">
-                        <thead><tr><th scope="col">Correo electrónico</th><th scope="col">Nombre</th><th scope="col">Apellidos</th><th scope="col">Tipo de usuario</th><th scope="col">Fecha de alta</th><th scope="col">Fecha del último login</th><th scope="col">Última conexión / estado</th><th scope="col">Acciones</th></tr></thead>
+                        <thead><tr><th scope="col">Correo</th><th scope="col">Nombre</th><th scope="col">Apellidos</th><th scope="col">Tipo de usuario</th><th scope="col">Fecha de alta</th><th scope="col">Conexión / estado</th><th scope="col">Gestionar</th></tr></thead>
                         <tbody id="adminUsersList"></tbody>
                     </table>
                 </div>
@@ -304,7 +303,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
     <script src="./firebase-config.js"></script>
-    <script src="./cloud.js?v=8"></script>
+    <script src="./cloud.js?v=10"></script>
     <script src="./script.js?v=11"></script>
 </body>
 </html>

@@ -58,7 +58,7 @@
     function formatAdminDate(value) {
         if (!value) return 'Nunca';
         const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' });
+        return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
     }
     function normalizeSearch(value) {
         return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
@@ -840,8 +840,6 @@
             role: el('adminUserRoleFilter').value,
             createdFrom: el('adminCreatedFrom').value,
             createdTo: el('adminCreatedTo').value,
-            signInFrom: el('adminLastSignInFrom').value,
-            signInTo: el('adminLastSignInTo').value,
             lastSeenFrom: el('adminLastSeenFrom').value,
             lastSeenTo: el('adminLastSeenTo').value
         };
@@ -850,15 +848,12 @@
             const lastName = normalizeSearch(profile.lastName);
             const role = profile.deletionPending ? 'deletionPending' : profile.platformRole === 'superadmin' ? 'superadmin' : 'normal';
             const createdAt = dateInputValue(profile.createdAt);
-            const lastLoginAt = dateInputValue(profile.lastLoginAt || profile.lastSignInAt);
             const lastSeenAt = dateInputValue(profile.lastSeenAt);
             return (!filters.firstName || firstName.includes(filters.firstName))
                 && (!filters.lastName || lastName.includes(filters.lastName))
                 && (!filters.role || role === filters.role)
                 && (!filters.createdFrom || (createdAt && createdAt >= filters.createdFrom))
                 && (!filters.createdTo || (createdAt && createdAt <= filters.createdTo))
-                && (!filters.signInFrom || (lastLoginAt && lastLoginAt >= filters.signInFrom))
-                && (!filters.signInTo || (lastLoginAt && lastLoginAt <= filters.signInTo))
                 && (!filters.lastSeenFrom || (lastSeenAt && lastSeenAt >= filters.lastSeenFrom))
                 && (!filters.lastSeenTo || (lastSeenAt && lastSeenAt <= filters.lastSeenTo));
         });
@@ -877,7 +872,7 @@
                 row.append(cell);
                 return cell;
             };
-            addCell('Correo electrónico', profile.email || '—', 'admin-user-email');
+            addCell('Correo', profile.email || '—', 'admin-user-email');
             addCell('Nombre', profile.firstName || '—');
             addCell('Apellidos', profile.lastName || '—');
             const typeCell = addCell('Tipo de usuario', '', 'admin-user-type');
@@ -886,7 +881,6 @@
             badge.textContent = profile.deletionPending ? 'Borrado pendiente' : profile.platformRole === 'superadmin' ? 'Administrador global' : 'Normal';
             typeCell.append(badge);
             addCell('Fecha de alta', formatAdminDate(profile.createdAt));
-            addCell('Fecha del último login', formatAdminDate(profile.lastLoginAt || profile.lastSignInAt));
             const connection = addCell('Última conexión / estado', '', 'admin-user-connection');
             const lastSeenMs = profile.lastSeenAt ? Date.parse(profile.lastSeenAt) : NaN;
             if (Number.isFinite(lastSeenMs) && Date.now() - lastSeenMs < 120000) {
@@ -895,7 +889,7 @@
             }
             const lastSeen = document.createElement('span'); lastSeen.className = 'admin-user-last-seen';
             lastSeen.textContent = formatAdminDate(profile.lastSeenAt); connection.append(lastSeen);
-            const actions = document.createElement('td'); actions.className = 'admin-user-actions'; actions.dataset.label = 'Acciones';
+            const actions = document.createElement('td'); actions.className = 'admin-user-actions'; actions.dataset.label = 'Gestionar';
             if (!profile.deletionPending) {
                 const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'secondary-button'; edit.textContent = 'Editar';
                 edit.addEventListener('click', () => openPlatformUserEditor(profile));
@@ -906,7 +900,7 @@
                 remove.textContent = profile.deletionPending ? 'Reintentar borrado' : 'Borrar';
                 remove.addEventListener('click', () => openPlatformUserDeletion(profile));
                 actions.append(remove);
-            } else if (!profile.deletionPending) actions.append(document.createTextNode('Tu cuenta'));
+            }
             row.append(actions); userList.append(row);
         });
         if (!adminUsers.length) {
