@@ -1235,14 +1235,24 @@
         el('saveGroupVisibilityBtn').addEventListener('click', saveDiscoverability);
         root.addEventListener('beforeinstallprompt', event => { event.preventDefault(); deferredInstallPrompt = event; el('installAppBtn').hidden = false; });
         el('installAppBtn').addEventListener('click', () => {
-            const isIOS = /iPad|iPhone|iPod/.test(root.navigator.userAgent) || (root.navigator.platform === 'MacIntel' && root.navigator.maxTouchPoints > 1);
+            const userAgent = root.navigator.userAgent || '';
+            const isIOS = /iPad|iPhone|iPod/.test(userAgent) || (root.navigator.platform === 'MacIntel' && root.navigator.maxTouchPoints > 1);
+            const isChrome = /CriOS|Chrome|Chromium/.test(userAgent);
+            const isSafari = /Safari/.test(userAgent) && !/CriOS|Chrome|Chromium|Edg|OPR/.test(userAgent);
+            const isMac = /Macintosh|Mac OS X/.test(userAgent) || root.navigator.platform === 'MacIntel';
             const text = deferredInstallPrompt
-                ? 'Instalar Kotxea añade un acceso a la pantalla de inicio y permite abrirla como una aplicación. Tus datos seguirán sincronizándose con tu cuenta.'
+                ? 'Chrome-n, sakatu beheko “Instalatu” botoia eta baieztatu Chrome-k erakutsiko dizun leihoan. Kotxea hasierako pantailan edo aplikazioen zerrendan agertuko da.'
                 : isIOS
-                    ? 'En Safari, toca Compartir y elige “Añadir a pantalla de inicio”. Después podrás abrir Kotxea desde el nuevo icono.'
-                    : /Android/.test(root.navigator.userAgent)
-                        ? 'Abre el menú del navegador (⋮) y elige “Instalar aplicación” o “Añadir a pantalla de inicio”.'
-                        : 'Abre el menú del navegador o usa el icono de instalación de la barra de direcciones para añadir Kotxea a tu dispositivo.';
+                    ? isChrome
+                        ? 'Chrome-n (iPhone/iPad): sakatu helbide barraren ondoko Partekatu ikonoa, aukeratu “Añadir a pantalla de inicio” (“Gehitu hasierako pantailara”) eta sakatu “Gehitu”.'
+                        : 'Safari-n (iPhone/iPad): sakatu Partekatu ikonoa (gorantz gezia duen laukia), aukeratu “Añadir a pantalla de inicio” (“Gehitu hasierako pantailara”) eta sakatu “Gehitu”. “Abrir como app web” aukera agertzen bada, aktibatu.'
+                    : isSafari && isMac
+                        ? 'Safari-n (Mac): menu-barran, aukeratu Fitxategia > Gehitu Dock-era (“File > Add to Dock”) eta sakatu “Gehitu”. Partekatu ikonoaren bidez ere egin dezakezu.'
+                        : /Android/.test(userAgent) && isChrome
+                            ? 'Chrome-n (Android): ireki ⋮ menua eta aukeratu “Instalar aplicación” (“Instalatu aplikazioa”) edo “Añadir a pantalla de inicio” (“Gehitu hasierako pantailara”); ondoren, baieztatu “Instalatu” sakatuta.'
+                            : isChrome
+                                ? 'Chrome-n (ordenagailuan): sakatu helbide barrako Instalatu ikonoa. Ikonoa agertzen ez bada, ireki ⋮ > “Transmitir, guardar y compartir” > “Instalar página como aplicación”.'
+                                : 'Ireki Kotxea Safari-n edo Chrome-n eta jarraitu azaldu diren pausoak. Instalatu ondoren, hasierako pantailako edo aplikazioen zerrendako Kotxea ikonoa erabil dezakezu.';
             el('installDialogText').textContent = text;
             el('installConfirmBtn').hidden = !deferredInstallPrompt;
             el('installDialog').showModal();

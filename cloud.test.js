@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-async function startCloud(role, canParticipate = false) {
+async function startCloud(role, canParticipate = false, userAgent = '') {
     const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
     const elements = new Map();
     for (const [tag, id] of html.matchAll(/<[^>]*\bid="([^"]+)"[^>]*>/g)) {
@@ -44,7 +44,7 @@ async function startCloud(role, canParticipate = false) {
         firebase: { apps: [{}], auth: () => auth, firestore },
         KOTXEA_FIREBASE_CONFIG: {},
         localStorage: { length: 0 },
-        navigator: { userAgent: '', platform: '', maxTouchPoints: 0 }, location: { protocol: 'https:', href: 'https://example.com/' },
+        navigator: { userAgent, platform: '', maxTouchPoints: 0 }, location: { protocol: 'https:', href: 'https://example.com/' },
         matchMedia: () => ({ matches: false }), addEventListener(event, listener) { rootListeners[event] = listener; },
         setInterval() { return 1; }, clearInterval() {}, setTimeout(callback) { callback(); }, URL
     };
@@ -104,7 +104,23 @@ test('install opens an explanation and remains available if the native prompt is
 
     elements.get('installAppBtn').listeners.click();
     assert.equal(elements.get('installDialog').open, true);
-    assert.match(elements.get('installDialogText').textContent, /Instalar Kotxea/);
+    assert.match(elements.get('installDialogText').textContent, /Chrome-n/);
     await elements.get('installConfirmBtn').listeners.click();
     assert.equal(elements.get('installAppBtn').hidden, false);
+});
+
+test('install explanation gives Safari and Chrome iPhone and Android steps in Basque', async () => {
+    const safari = await startCloud(null, false, 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1');
+    safari.elements.get('installAppBtn').listeners.click();
+    assert.match(safari.elements.get('installDialogText').textContent, /Safari-n \(iPhone\/iPad\)/);
+    assert.match(safari.elements.get('installDialogText').textContent, /Añadir a pantalla de inicio/);
+
+    const chromeIOS = await startCloud(null, false, 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/131.0.0.0 Mobile/15E148 Safari/604.1');
+    chromeIOS.elements.get('installAppBtn').listeners.click();
+    assert.match(chromeIOS.elements.get('installDialogText').textContent, /Chrome-n \(iPhone\/iPad\)/);
+
+    const chromeAndroid = await startCloud(null, false, 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36');
+    chromeAndroid.elements.get('installAppBtn').listeners.click();
+    assert.match(chromeAndroid.elements.get('installDialogText').textContent, /Chrome-n \(Android\)/);
+    assert.match(chromeAndroid.elements.get('installDialogText').textContent, /Añadir a pantalla de inicio/);
 });
