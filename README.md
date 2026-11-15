@@ -6,9 +6,9 @@ Aplicación web móvil para coordinar viajes compartidos al trabajo, repartir tu
 
 - Firebase Hosting sirve la web estática. GitHub Pages permanece como destino de respaldo mientras se valida el cambio.
 - Firebase Authentication gestiona las cuentas con Google o correo y contraseña.
-- Cloud Firestore guarda cada grupo, sus personas, miembros, viajes, invitaciones y solicitudes.
+- Cloud Firestore guarda los grupos, sus personas, miembros, viajes, invitaciones y solicitudes, además del último pulso de conexión para indicar si una cuenta sigue en línea.
 - `firestore.rules` limita el acceso en Firebase; la interfaz por sí sola no concede permisos.
-- Una Cloud Function protegida con Firebase Authentication permite al superadministrador consultar el listado completo de cuentas de Firebase Authentication.
+- Una Cloud Function protegida con Firebase Authentication permite al superadministrador consultar las cuentas, la fecha de alta y el último inicio de sesión de Firebase Authentication.
 - `manifest.json` y `service-worker.js` permiten instalar la web como PWA. Hace falta conexión para iniciar sesión y sincronizar los cambios.
 - Las invitaciones generan un enlace para copiar y enviar manualmente. El proyecto no envía correos de invitación automáticamente.
 

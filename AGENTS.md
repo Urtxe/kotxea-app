@@ -21,7 +21,7 @@
 
 ## Arquitectura de Kotxea
 
-- Es una aplicación web estática/PWA. Firebase Authentication gestiona las cuentas; Cloud Firestore guarda grupos, miembros, personas, viajes, invitaciones y solicitudes.
+- Es una aplicación web estática/PWA. Firebase Authentication gestiona las cuentas; Cloud Firestore guarda grupos, miembros, personas, viajes, invitaciones, solicitudes y el último pulso de presencia en `userPresence/{uid}`.
 - Firebase Hosting sirve la aplicación en `https://kotxea-urtxe.web.app`. GitHub Pages también se actualiza en el workflow como destino de respaldo.
 - `firebase-config.js` contiene configuración web pública; no es un lugar para credenciales privadas. Los permisos de acceso los aplican Firebase Auth y `firestore.rules`.
 - La fuente versionada de seguridad e índices es `firestore.rules` y `firestore.indexes.json`. No soluciones errores de permisos debilitando reglas sin verificar el flujo y el modelo de acceso.
@@ -32,6 +32,7 @@
 - Una cuenta verificada puede crear grupos y queda vinculada como participante y administradora del grupo. La cuenta global `superadmin` solo participa en grupos si su documento `platformRoles/{uid}` tiene `canParticipate: true`; la cuenta inicial de Mikel no debe participar. El superadministrador ve todos los grupos y usuarios; puede conceder ese rol a otras cuentas.
 - Los usuarios normales no necesitan un rol de plataforma `creator`: cualquier cuenta con correo verificado puede crear grupos. El único rol especial de plataforma es `superadmin`.
 - `functions/listAuthUsers` usa Firebase Admin SDK y debe comprobar el rol global en el servidor antes de devolver cuentas de Authentication. `functions/setPlatformUser` y `functions/deletePlatformUser` también validan el rol en el servidor. No muevas estas operaciones privilegiadas al navegador ni debilites las reglas de Firestore.
+- La presencia se registra desde la sesión autenticada con `serverTimestamp` aproximadamente una vez por minuto. Solo el propio usuario puede escribir su documento; solo superadministradores pueden listar la colección. La interfaz considera en línea un pulso de menos de dos minutos y deja de actualizarlo cuando la página está oculta.
 - Al borrar una cuenta, conserva grupos, viajes, personas y balances. Transfiere la propiedad de grupos activos a otro miembro cuando sea posible; no borres cuentas que sean el único miembro de un grupo ni dejen incompleta una importación. Desvincula `linkedUid` y elimina membresías y referencias personales.
 - `deletedAccounts/{uid}` es un tombstone permanente que invalida tokens antiguos en `firestore.rules` y evita restaurar roles o membresías. Créalo antes de limpiar una cuenta y nunca lo elimines durante reintentos.
 - Una cuenta puede pertenecer a varios grupos; los roles `owner` y `admin` gestionan un grupo. La membresía y los roles deben validarse también en las reglas, no solo ocultando controles de interfaz.

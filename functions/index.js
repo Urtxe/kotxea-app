@@ -46,10 +46,11 @@ exports.listAuthUsers = onCall(functionsConfig, async request => {
     const users = [];
     for (let offset = 0; offset < authUsers.length; offset += 100) {
         const page = authUsers.slice(offset, offset + 100);
-        const [roles, profiles, deletions] = await Promise.all([
+        const [roles, profiles, deletions, presences] = await Promise.all([
             db.getAll(...page.map(user => db.collection('platformRoles').doc(user.uid))),
             db.getAll(...page.map(user => db.collection('users').doc(user.uid))),
-            db.getAll(...page.map(user => db.collection('deletedAccounts').doc(user.uid)))
+            db.getAll(...page.map(user => db.collection('deletedAccounts').doc(user.uid))),
+            db.getAll(...page.map(user => db.collection('userPresence').doc(user.uid)))
         ]);
         page.forEach((user, index) => {
             const profile = profiles[index].exists ? profiles[index].data() : {};
@@ -58,6 +59,7 @@ exports.listAuthUsers = onCall(functionsConfig, async request => {
             const legacyName = (user.displayName || profile.displayName || '').trim();
             const legacyParts = legacyName.split(/\s+/).filter(Boolean);
             const parsedFirstName = legacyParts.shift() || '';
+            const lastSeenAt = presences[index].data()?.lastSeenAt?.toDate?.().toISOString() || null;
             users.push({
                 uid: user.uid,
                 email: user.email || '',
@@ -65,7 +67,9 @@ exports.listAuthUsers = onCall(functionsConfig, async request => {
                 firstName: firstName || (!lastName ? parsedFirstName : ''),
                 lastName: lastName || (!firstName ? legacyParts.join(' ') : ''),
                 createdAt: user.metadata.creationTime || null,
+                lastLoginAt: user.metadata.lastSignInTime || null,
                 lastSignInAt: user.metadata.lastSignInTime || null,
+                lastSeenAt,
                 emailVerified: user.emailVerified,
                 disabled: user.disabled,
                 deletionPending: deletions[index].exists,
@@ -313,7 +317,8 @@ exports.deletePlatformUser = onCall(functionsConfig, async request => {
 
         await Promise.all([
             db.collection('platformRoles').doc(targetUid).delete(),
-            db.collection('users').doc(targetUid).delete()
+            db.collection('users').doc(targetUid).delete(),
+            db.collection('userPresence').doc(targetUid).delete()
         ]);
         if (targetAccount) {
             try { await auth.deleteUser(targetUid); }

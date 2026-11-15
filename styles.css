@@ -166,6 +166,7 @@ button:disabled { opacity: .6; cursor: not-allowed; }
 .admin-date-filter legend { grid-column: 1 / -1; padding: 0; }
 .admin-date-filter label { min-width: 0; }
 .admin-user-filters button { min-height: 40px; padding: 7px 11px; font-size: .8rem; }
+.admin-presence-help { margin: -5px 2px 12px; font-size: .74rem; }
 .admin-table-scroll { overflow-x: auto; border: 1px solid var(--borde); border-radius: 16px; background: var(--panel); box-shadow: var(--sombra); }
 .admin-users-table { width: 100%; min-width: 850px; border-collapse: collapse; }
 .admin-users-table th, .admin-users-table td { padding: 11px 12px; border-bottom: 1px solid var(--borde); text-align: left; font-size: .79rem; overflow-wrap: anywhere; }
@@ -174,6 +175,10 @@ button:disabled { opacity: .6; cursor: not-allowed; }
 .admin-users-table td:first-child { min-width: 170px; }
 .admin-user-email { font-weight: 600; }
 .admin-user-type { white-space: nowrap; }
+.admin-user-connection { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; white-space: nowrap; }
+.admin-presence-badge { display: inline-flex; align-items: center; gap: 5px; color: #6b9f2a; font-size: .72rem; font-weight: 750; }
+.admin-presence-badge::before { width: 7px; height: 7px; border-radius: 50%; background: #7bbe31; box-shadow: 0 0 0 3px rgba(123, 190, 49, .14); content: ""; }
+.admin-user-last-seen { color: var(--tinta-suave); font-size: .72rem; }
 .admin-role-badge { display: inline-flex; align-items: center; min-height: 25px; padding: 3px 8px; border: 1px solid var(--borde); border-radius: 999px; color: var(--tinta-suave); background: rgba(255, 255, 255, .04); font-size: .7rem; font-weight: 650; }
 .admin-role-badge[data-role="superadmin"] { border-color: rgba(193, 0, 114, .35); color: var(--acento); background: rgba(193, 0, 114, .09); }
 .admin-role-badge[data-role="pending"] { border-color: rgba(190, 135, 48, .45); color: #e9c984; }

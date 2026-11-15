@@ -21,10 +21,12 @@ async function startCloud(role, canParticipate = false) {
     }
     const nav = { hidden: false };
     const emptySnapshot = { docs: [], empty: true, forEach() {} };
+    const presenceWrites = [];
     const reference = (refPath) => ({
         collection: name => reference(refPath + '/' + name),
         doc: id => reference(refPath + '/' + id),
         where: () => reference(refPath),
+        async set(data) { if (refPath.startsWith('userPresence/')) presenceWrites.push({ path: refPath, data }); },
         async get() {
             if (refPath === 'users/test-user') return { exists: true };
             if (refPath === 'platformRoles/test-user') return { exists: Boolean(role), data: () => ({ role, canParticipate }) };
@@ -35,21 +37,23 @@ async function startCloud(role, canParticipate = false) {
     const rootListeners = {};
     const auth = { onAuthStateChanged(callback) { onAuthChanged = callback; } };
     const db = { collection: name => reference(name), async enablePersistence() {} };
+    const firestore = Object.assign(() => db, { FieldValue: { serverTimestamp: () => new Date() } });
     const context = {
         console,
-        document: { getElementById: id => elements.get(id) || null, querySelector: () => nav },
-        firebase: { apps: [{}], auth: () => auth, firestore: () => db },
+        document: { getElementById: id => elements.get(id) || null, querySelector: () => nav, visibilityState: 'visible', addEventListener() {} },
+        firebase: { apps: [{}], auth: () => auth, firestore },
         KOTXEA_FIREBASE_CONFIG: {},
         localStorage: { length: 0 },
         navigator: { userAgent: '', platform: '', maxTouchPoints: 0 }, location: { protocol: 'https:', href: 'https://example.com/' },
-        matchMedia: () => ({ matches: false }), addEventListener(event, listener) { rootListeners[event] = listener; }, URL
+        matchMedia: () => ({ matches: false }), addEventListener(event, listener) { rootListeners[event] = listener; },
+        setInterval() { return 1; }, clearInterval() {}, setTimeout(callback) { callback(); }, URL
     };
     context.window = context;
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'cloud.js'), 'utf8'), context);
     await context.KotxeaCloud.start();
     const user = { uid: 'test-user', email: 'user@example.com', displayName: 'Test', emailVerified: true, providerData: [{ providerId: 'google.com' }] };
     await onAuthChanged(user);
-    return { elements, nav, onAuthChanged, rootListeners };
+    return { elements, nav, onAuthChanged, rootListeners, presenceWrites };
 }
 
 test('signed-in global administrator gets the dashboard without becoming a group participant', async () => {
@@ -84,6 +88,14 @@ test('a global administrator marked as a participant can create and join groups'
     const { elements } = await startCloud('superadmin', true);
     assert.equal(elements.get('createGroupDetails').hidden, false);
     assert.equal(elements.get('groupSearchPanel').hidden, false);
+});
+
+test('a verified signed-in user publishes a presence heartbeat', async () => {
+    const { presenceWrites } = await startCloud(null);
+    assert.equal(presenceWrites.length, 1);
+    assert.equal(presenceWrites[0].path, 'userPresence/test-user');
+    assert.equal(presenceWrites[0].data.uid, 'test-user');
+    assert.equal(typeof presenceWrites[0].data.lastSeenAt.getTime, 'function');
 });
 
 test('install opens an explanation and remains available if the native prompt is dismissed', async () => {

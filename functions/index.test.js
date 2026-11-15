@@ -48,6 +48,8 @@ test('user directory separates legacy first and last names and includes auth tim
     const uid = `legacy-${randomUUID()}`;
     await auth.createUser({ uid, email: `${uid}@example.com`, displayName: 'Mikel Urtxegi Garcia' });
     await db.collection('users').doc(uid).set({ uid, email: `${uid}@example.com`, displayName: 'Mikel Urtxegi Garcia' });
+    const seenAt = new Date('2026-11-15T12:30:00.000Z');
+    await db.collection('userPresence').doc(uid).set({ uid, lastSeenAt: seenAt });
 
     const result = await functions.listAuthUsers.run(callableRequest(adminUid, {}));
     const listed = result.users.find(profile => profile.uid === uid);
@@ -55,12 +57,15 @@ test('user directory separates legacy first and last names and includes auth tim
     assert.equal(listed.firstName, 'Mikel');
     assert.equal(listed.lastName, 'Urtxegi Garcia');
     assert.ok(Number.isFinite(Date.parse(listed.createdAt)));
+    assert.ok(Number.isFinite(Date.parse(listed.lastLoginAt)) || listed.lastLoginAt === null);
+    assert.equal(listed.lastSeenAt, seenAt.toISOString());
     assert.ok(listed.lastSignInAt === null || Number.isFinite(Date.parse(listed.lastSignInAt)));
 });
 
 test('deleting a group owner transfers ownership and preserves its trip history', async () => {
     const targetUid = await createUser('Owner');
     const replacementUid = await createUser('Member');
+    await db.collection('userPresence').doc(targetUid).set({ uid: targetUid, lastSeenAt: new Date() });
     const groupId = `group-${randomUUID()}`;
     const groupRef = db.collection('groups').doc(groupId);
     await groupRef.set({ name: 'Familia', ownerUid: targetUid, createdBy: targetUid, status: 'active', revision: 4 });
@@ -80,6 +85,7 @@ test('deleting a group owner transfers ownership and preserves its trip history'
     assert.equal((await groupRef.collection('people').doc('owner-person').get()).data().linkedUid, undefined);
     assert.equal((await groupRef.collection('trips').doc('trip-1').get()).exists, true);
     assert.equal((await db.collection('deletedAccounts').doc(targetUid).get()).data().state, 'deleted');
+    assert.equal((await db.collection('userPresence').doc(targetUid).get()).exists, false);
     await assert.rejects(auth.getUser(targetUid), error => error.code === 'auth/user-not-found');
 });
 

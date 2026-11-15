@@ -85,6 +85,17 @@ service cloud.firestore {
       }
     }
 
+    match /userPresence/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isSuperAdmin());
+      allow list: if isSuperAdmin();
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['uid', 'lastSeenAt'])
+        && request.resource.data.uid == uid
+        && request.resource.data.lastSeenAt is timestamp
+        && request.resource.data.lastSeenAt == request.time;
+      allow delete: if false;
+    }
+
     match /deletedAccounts/{uid} {
       allow read, write: if false;
     }

@@ -15,6 +15,10 @@
     let activeMember = null;
     let revision = 0;
     let groupUnsubscribe = null;
+    let adminPresenceUnsubscribe = null;
+    let adminPresenceRefreshTimer = null;
+    let presenceHeartbeat = null;
+    let presenceEnabled = false;
     let localState = null;
     let appStateCallback = null;
     let statusCallback = null;
@@ -60,6 +64,7 @@
         return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
     }
     function setGate(panelId) {
+        if (panelId !== 'adminPanel') stopAdminPresenceListener();
         ['authPanel', 'groupsPanel', 'adminPanel'].forEach(id => { el(id).hidden = id !== panelId; });
         el('appContent').hidden = panelId !== 'app';
         document.querySelector('.bottom-nav').hidden = panelId !== 'app';
@@ -823,6 +828,7 @@
                 const result = await firebase.app().functions('us-central1').httpsCallable('listAuthUsers')({});
                 adminUsers = result.data.users || [];
                 renderAdminUsers();
+                watchAdminPresence();
                 el('adminFeedback').textContent = '';
             }
         } catch (error) { el('adminFeedback').textContent = 'Ezin izan da administrazio-panela kargatu: ' + safeError(error); }
@@ -835,21 +841,26 @@
             createdFrom: el('adminCreatedFrom').value,
             createdTo: el('adminCreatedTo').value,
             signInFrom: el('adminLastSignInFrom').value,
-            signInTo: el('adminLastSignInTo').value
+            signInTo: el('adminLastSignInTo').value,
+            lastSeenFrom: el('adminLastSeenFrom').value,
+            lastSeenTo: el('adminLastSeenTo').value
         };
         const matches = adminUsers.filter(profile => {
             const firstName = normalizeSearch(profile.firstName);
             const lastName = normalizeSearch(profile.lastName);
             const role = profile.deletionPending ? 'deletionPending' : profile.platformRole === 'superadmin' ? 'superadmin' : 'normal';
             const createdAt = dateInputValue(profile.createdAt);
-            const lastSignInAt = dateInputValue(profile.lastSignInAt);
+            const lastLoginAt = dateInputValue(profile.lastLoginAt || profile.lastSignInAt);
+            const lastSeenAt = dateInputValue(profile.lastSeenAt);
             return (!filters.firstName || firstName.includes(filters.firstName))
                 && (!filters.lastName || lastName.includes(filters.lastName))
                 && (!filters.role || role === filters.role)
                 && (!filters.createdFrom || (createdAt && createdAt >= filters.createdFrom))
                 && (!filters.createdTo || (createdAt && createdAt <= filters.createdTo))
-                && (!filters.signInFrom || (lastSignInAt && lastSignInAt >= filters.signInFrom))
-                && (!filters.signInTo || (lastSignInAt && lastSignInAt <= filters.signInTo));
+                && (!filters.signInFrom || (lastLoginAt && lastLoginAt >= filters.signInFrom))
+                && (!filters.signInTo || (lastLoginAt && lastLoginAt <= filters.signInTo))
+                && (!filters.lastSeenFrom || (lastSeenAt && lastSeenAt >= filters.lastSeenFrom))
+                && (!filters.lastSeenTo || (lastSeenAt && lastSeenAt <= filters.lastSeenTo));
         });
         const userList = el('adminUsersList'); userList.replaceChildren();
         const countText = count => count + (count === 1 ? ' cuenta' : ' cuentas');
@@ -875,7 +886,15 @@
             badge.textContent = profile.deletionPending ? 'Borrado pendiente' : profile.platformRole === 'superadmin' ? 'Administrador global' : 'Normal';
             typeCell.append(badge);
             addCell('Fecha de alta', formatAdminDate(profile.createdAt));
-            addCell('Última conexión', formatAdminDate(profile.lastSignInAt));
+            addCell('Fecha del último login', formatAdminDate(profile.lastLoginAt || profile.lastSignInAt));
+            const connection = addCell('Última conexión / estado', '', 'admin-user-connection');
+            const lastSeenMs = profile.lastSeenAt ? Date.parse(profile.lastSeenAt) : NaN;
+            if (Number.isFinite(lastSeenMs) && Date.now() - lastSeenMs < 120000) {
+                const online = document.createElement('span'); online.className = 'admin-presence-badge';
+                online.textContent = 'En línea'; connection.append(online);
+            }
+            const lastSeen = document.createElement('span'); lastSeen.className = 'admin-user-last-seen';
+            lastSeen.textContent = formatAdminDate(profile.lastSeenAt); connection.append(lastSeen);
             const actions = document.createElement('td'); actions.className = 'admin-user-actions'; actions.dataset.label = 'Acciones';
             if (!profile.deletionPending) {
                 const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'secondary-button'; edit.textContent = 'Editar';
@@ -892,9 +911,49 @@
         });
         if (!adminUsers.length) {
             const row = document.createElement('tr'); const empty = document.createElement('td');
-            empty.colSpan = 7; empty.className = 'admin-users-empty-cell'; empty.textContent = 'No hay cuentas registradas.';
+            empty.colSpan = 8; empty.className = 'admin-users-empty-cell'; empty.textContent = 'No hay cuentas registradas.';
             row.append(empty); userList.append(row);
         }
+    }
+    function stopAdminPresenceListener() {
+        if (adminPresenceUnsubscribe) adminPresenceUnsubscribe();
+        adminPresenceUnsubscribe = null;
+        if (adminPresenceRefreshTimer) root.clearInterval(adminPresenceRefreshTimer);
+        adminPresenceRefreshTimer = null;
+    }
+    function watchAdminPresence() {
+        stopAdminPresenceListener();
+        adminPresenceUnsubscribe = db.collection('userPresence').onSnapshot(snapshot => {
+            const presence = new Map();
+            snapshot.forEach(document => {
+                const data = document.data();
+                const value = data.lastSeenAt && data.lastSeenAt.toDate && data.lastSeenAt.toDate().toISOString();
+                if (value) presence.set(document.id, value);
+            });
+            adminUsers = adminUsers.map(profile => ({ ...profile, lastSeenAt: presence.get(profile.uid) || null }));
+            renderAdminUsers();
+        }, error => {
+            console.warn('Kotxea live user presence unavailable:', error && error.code);
+        });
+        adminPresenceRefreshTimer = root.setInterval(renderAdminUsers, 30000);
+    }
+    function updateOwnPresence() {
+        if (!presenceEnabled || !user || !db || document.visibilityState === 'hidden') return;
+        db.collection('userPresence').doc(user.uid).set({
+            uid: user.uid,
+            lastSeenAt: firebase.firestore.FieldValue.serverTimestamp()
+        }).catch(error => console.warn('Kotxea presence update failed:', error && error.code));
+    }
+    function stopPresenceTracking() {
+        presenceEnabled = false;
+        if (presenceHeartbeat) root.clearInterval(presenceHeartbeat);
+        presenceHeartbeat = null;
+    }
+    function startPresenceTracking() {
+        stopPresenceTracking();
+        presenceEnabled = true;
+        updateOwnPresence();
+        presenceHeartbeat = root.setInterval(updateOwnPresence, 60000);
     }
     function syncPlatformUserRoleFields() {
         el('editPlatformParticipationRow').hidden = el('editPlatformRole').value !== 'superadmin';
@@ -1017,16 +1076,18 @@
         el('refreshRoleBtn').hidden = false;
     }
     async function loadProfileAndGate() {
-        if (!user) { activeGroup = null; activeMember = null; setGate('authPanel'); el('resendVerificationBtn').hidden = true; el('verifiedContinueBtn').hidden = true; return; }
+        if (!user) { stopPresenceTracking(); activeGroup = null; activeMember = null; setGate('authPanel'); el('resendVerificationBtn').hidden = true; el('verifiedContinueBtn').hidden = true; return; }
         el('accountMenuBtn').textContent = user.displayName || user.email || 'Kontua';
         if (!el('newGroupParticipantName').value) el('newGroupParticipantName').value = user.displayName || '';
         if (verificationRequired(user)) {
+            stopPresenceTracking();
             setGate('authPanel');
             el('authTitle').textContent = 'Egiaztatu zure posta elektronikoa';
             updateAuthFeedback('Bidali dizugun estekarekin egiaztatu kontua, eta sakatu “Posta egiaztatu dut”.');
             el('resendVerificationBtn').hidden = false; el('verifiedContinueBtn').hidden = false;
             return;
         }
+        startPresenceTracking();
         el('authTitle').textContent = 'Sartu Kotxean';
         setGate('groupsPanel');
         el('groupsFeedback').textContent = 'Kontuaren datuak kargatzen…';
@@ -1098,6 +1159,9 @@
         el('adminUserFilters').addEventListener('input', renderAdminUsers);
         el('adminUserFilters').addEventListener('change', renderAdminUsers);
         el('adminUserFilters').addEventListener('reset', () => root.setTimeout(renderAdminUsers, 0));
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') updateOwnPresence();
+        });
         el('confirmDeletePlatformUserButton').addEventListener('click', confirmDeletePlatformUser);
         if (document.querySelectorAll) document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEventListener('click', () => {
             const dialog = el(button.dataset.closeDialog);

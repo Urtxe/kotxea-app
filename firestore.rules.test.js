@@ -7,7 +7,7 @@ const {
     assertSucceeds,
     initializeTestEnvironment
 } = require('@firebase/rules-unit-testing');
-const { doc, getDoc, setDoc, updateDoc, writeBatch } = require('firebase/firestore');
+const { collection, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc, writeBatch } = require('firebase/firestore');
 
 const projectId = 'demo-kotxea';
 const rules = fs.readFileSync(path.join(__dirname, 'firestore.rules'), 'utf8');
@@ -130,6 +130,7 @@ test('a deletion tombstone blocks an already-issued sign-in token immediately', 
 
     await assertFails(getDoc(doc(db, 'users', uid)));
     await assertFails(getDoc(doc(db, 'deletedAccounts', uid)));
+    await assertFails(setDoc(doc(db, 'userPresence', uid), { uid, lastSeenAt: serverTimestamp() }));
 });
 
 test('a regular account can save its separate first and last names', async () => {
@@ -142,6 +143,33 @@ test('a regular account can save its separate first and last names', async () =>
     await assertSucceeds(updateDoc(doc(db, 'users', uid), {
         displayName: 'Ana López García', firstName: 'Ana', lastName: 'López García'
     }));
+});
+
+test('accounts can publish only their own current presence and global admins can read it', async () => {
+    await seedAccount('presence-user', null);
+    await seedAccount('presence-other', null);
+    await seedAccount('presence-admin', 'superadmin');
+    const ownDb = testEnv.authenticatedContext('presence-user', {
+        email: 'presence-user@example.com', email_verified: true
+    }).firestore();
+    const otherDb = testEnv.authenticatedContext('presence-other', {
+        email: 'presence-other@example.com', email_verified: true
+    }).firestore();
+    const adminDb = testEnv.authenticatedContext('presence-admin', {
+        email: 'presence-admin@example.com', email_verified: true
+    }).firestore();
+
+    await assertSucceeds(setDoc(doc(ownDb, 'userPresence/presence-user'), {
+        uid: 'presence-user', lastSeenAt: serverTimestamp()
+    }));
+    await assertFails(setDoc(doc(ownDb, 'userPresence/presence-other'), {
+        uid: 'presence-other', lastSeenAt: serverTimestamp()
+    }));
+    await assertFails(setDoc(doc(ownDb, 'userPresence/presence-user'), {
+        uid: 'presence-user', lastSeenAt: new Date(0)
+    }));
+    await assertSucceeds(getDocs(collection(adminDb, 'userPresence')));
+    await assertFails(getDocs(collection(ownDb, 'userPresence')));
 });
 
 test('a global admin cannot restore a platform role to a deleted account', async () => {
