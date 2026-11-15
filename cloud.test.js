@@ -24,6 +24,8 @@ async function startCloud(role, canParticipate = false, userAgent = '') {
     }
     const nav = { hidden: false };
     const presenceWrites = [];
+    let verifiedToken = false;
+    let tokenRefreshes = 0;
     const documents = new Map();
     let nextId = 0;
     const reference = (refPath) => ({
@@ -54,7 +56,10 @@ async function startCloud(role, canParticipate = false, userAgent = '') {
             return {
                 set(ref, data) { writes.push([ref.path, data]); },
                 update(ref, data) { writes.push([ref.path, { ...documents.get(ref.path), ...data }]); },
-                async commit() { writes.forEach(([key, data]) => documents.set(key, data)); }
+                async commit() {
+                    if (!verifiedToken) throw Object.assign(new Error('Unverified ID token'), { code: 'permission-denied' });
+                    writes.forEach(([key, data]) => documents.set(key, data));
+                }
             };
         }
     };
@@ -75,9 +80,11 @@ async function startCloud(role, canParticipate = false, userAgent = '') {
         vm.runInNewContext(fs.readFileSync(path.join(__dirname, file + '.js'), 'utf8'), context);
     }
     await context.KotxeaCloud.start();
-    const user = { uid: 'test-user', email: 'user@example.com', displayName: 'Test', emailVerified: true, providerData: [{ providerId: 'google.com' }] };
+    const user = { uid: 'test-user', email: 'user@example.com', displayName: 'Test', emailVerified: true, providerData: [{ providerId: 'password' }],
+        async getIdToken(forceRefresh) { if (forceRefresh) { verifiedToken = true; tokenRefreshes += 1; } return 'test-token'; }
+    };
     await onAuthChanged(user);
-    return { elements, nav, onAuthChanged, rootListeners, presenceWrites, documents, cloud: context.KotxeaCloud, logic: context.KotxeaLogic };
+    return { elements, nav, onAuthChanged, rootListeners, presenceWrites, documents, tokenRefreshes, cloud: context.KotxeaCloud, logic: context.KotxeaLogic };
 }
 
 test('signed-in global administrator gets the dashboard without becoming a group participant', async () => {
@@ -121,7 +128,8 @@ test('group creation explains when the participant name is missing', async () =>
 });
 
 test('production script order supports creating, activating and opening a group', async () => {
-    const { elements, documents, cloud, logic } = await startCloud(null);
+    const { elements, documents, cloud, logic, tokenRefreshes } = await startCloud(null);
+    assert.equal(tokenRefreshes, 1);
     elements.get('newGroupName').value = 'Donostia - Arrasate';
     elements.get('newGroupParticipantName').value = 'Nerea';
     elements.get('newGroupDiscoverable').checked = true;

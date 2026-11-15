@@ -1167,6 +1167,8 @@
             el('resendVerificationBtn').hidden = false; el('verifiedContinueBtn').hidden = false;
             return;
         }
+        // reload() updates emailVerified but can leave the ID token unverified.
+        await user.getIdToken(true);
         startPresenceTracking();
         el('authTitle').textContent = 'Sartu Kotxean';
         setGate('groupsPanel');
