@@ -13,7 +13,7 @@
             if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
         } catch (_) {}
     </script>
-    <link rel="stylesheet" href="styles.css?v=10">
+    <link rel="stylesheet" href="styles.css?v=11">
 </head>
 <body>
     <div class="app-shell">
@@ -60,13 +60,15 @@
                 <summary>Talde berria sortu</summary>
                 <form id="createGroupForm" class="gate-form">
                     <div class="field"><label for="newGroupName">Taldearen izena</label><input id="newGroupName" maxlength="80" required placeholder="Donostia–Mondragón"></div>
+                    <div class="field"><label for="newGroupParticipantName">Zure izena taldeko bidaiari gisa</label><input id="newGroupParticipantName" maxlength="80" required autocomplete="name"></div>
+                    <fieldset class="initial-invite"><legend>Sortzean bidaiariak gonbidatu (aukerakoa)</legend><div id="initialInviteRows"><div class="initial-invite-row"><div class="field"><label for="initialInviteName">Bidaiariaren izena</label><input id="initialInviteName" data-field="name" maxlength="80" autocomplete="off"></div><div class="field"><label for="initialInviteEmail">Posta elektronikoa</label><input id="initialInviteEmail" data-field="email" type="email" autocomplete="email"></div></div></div><button type="button" id="addInitialInviteBtn" class="secondary-button">Gehitu beste bidaiari bat</button><p class="help">Gonbidapen-esteka sortuko da pertsona bakoitzarentzat; gero ere gonbida ditzakezu taldearen barrutik.</p></fieldset>
                     <label class="check-row"><input id="newGroupDiscoverable" type="checkbox" checked> Baimendu talde hau bilatzea eta sartzeko eskaera egitea</label>
                     <label class="check-row"><input id="importLocalData" type="checkbox" checked> Gailu honetan gordetako bidaiariak, saldoak eta historia inportatu (daturik badago)</label>
                     <p id="createGroupFeedback" class="help" role="status"></p>
                     <button type="submit">Taldea sortu</button>
                 </form>
             </details>
-            <details class="settings-panel">
+            <details id="groupSearchPanel" class="settings-panel">
                 <summary>Bilatu talde bat</summary>
                 <form id="groupSearchForm" class="gate-form">
                     <div class="field"><label for="groupSearch">Taldearen izena</label><input id="groupSearch" maxlength="80" autocomplete="off"></div>
@@ -76,6 +78,7 @@
             </details>
             <section id="pendingRequestsPanel" class="settings-panel" hidden><h3>Nire eskaerak</h3><ul id="myRequestsList" class="group-picker-list"></ul></section>
             <section id="emailInvitesPanel" class="settings-panel" hidden><h3>Gonbidapenak</h3><ul id="myInvitesList" class="group-picker-list"></ul></section>
+            <button type="button" id="globalAdminFromGroupsBtn" class="secondary-button" hidden>Administrazio globala</button>
             <button type="button" id="signOutFromGroupsBtn" class="secondary-button">Saioa itxi</button>
         </section>
 
@@ -86,13 +89,14 @@
                 <h3>Plataforma-administratzaileak</h3>
                 <form id="platformRoleForm" class="gate-form">
                     <div class="field"><label for="adminUserSelect">Erabiltzailea</label><select id="adminUserSelect" required></select></div>
-                    <div class="field"><label for="platformRoleSelect">Rola</label><select id="platformRoleSelect"><option value="creator">Taldeak sortu eta kudeatu</option><option value="none">Plataforma rola kendu</option></select></div>
+                    <div class="field"><label for="platformRoleSelect">Rola</label><select id="platformRoleSelect"><option value="creator">Talde-sortzailea</option><option value="superadmin">Administratzaile globala</option><option value="none">Plataforma rola kendu</option></select></div>
+                <label class="check-row"><input id="platformCanParticipate" type="checkbox"> Administratzaile global honek taldeetan parte har dezake</label>
                     <button type="submit">Rola gorde</button>
                 </form>
-                <p class="help">Superadministratzailearen lehen alta Firebase kontsolan egiten da; ez eman rola erabiltzailearen beraren aukerarekin.</p>
+                <p class="help">Lehen superadministratzailea Firebase kontsolan ezartzen da. Konfiantzazko pertsona bati superadministratzaile rola eman diezaiokezu hemen.</p>
             </div>
-            <h3>Taldeak</h3><ul id="adminGroupsList" class="group-picker-list"></ul>
-            <section id="allUsersPanel" class="settings-panel" hidden><h3>Kontuak</h3><p class="help">Erabiltzaile bati plataformako talde-sortzaile rola eman edo kendu.</p></section>
+            <h3>Taldeak eta emaitzak</h3><ul id="adminGroupsList" class="group-picker-list"></ul>
+            <section id="allUsersPanel" class="settings-panel" hidden><h3>Erregistratutako kontu guztiak</h3><p id="adminUserCount" class="help"></p><ul id="adminUsersList" class="group-picker-list"></ul></section>
             <button type="button" id="backToGroupsBtn" class="secondary-button">Nire taldeetara itzuli</button>
         </section>
 
@@ -255,11 +259,17 @@
         <p>Bidaia ondo gorde da.</p>
         <form method="dialog"><button autofocus>Ados</button></form>
     </dialog>
+    <dialog id="installDialog" class="save-dialog install-dialog" aria-labelledby="installDialogTitle">
+        <h2 id="installDialogTitle">Instala Kotxea</h2>
+        <p id="installDialogText"></p>
+        <div class="dialog-actions"><button type="button" id="installConfirmBtn" hidden>Instalar</button><form method="dialog"><button class="secondary-button">Ahora no</button></form></div>
+    </dialog>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
     <script src="./firebase-config.js"></script>
-    <script src="./cloud.js?v=4"></script>
+    <script src="./cloud.js?v=5"></script>
     <script src="./script.js?v=11"></script>
 </body>
 </html>

@@ -10,6 +10,7 @@
     let db;
     let user = null;
     let platformRole = null;
+    let platformCanParticipate = false;
     let activeGroup = null;
     let activeMember = null;
     let revision = 0;
@@ -24,7 +25,7 @@
     function el(id) { return document.getElementById(id); }
     function signedIn() { return Boolean(user && user.uid); }
     function isSuperAdmin() { return platformRole === 'superadmin'; }
-    function canCreateGroups() { return platformRole === 'superadmin' || platformRole === 'creator'; }
+    function canCreateGroups() { return signedIn() && (!isSuperAdmin() || platformCanParticipate); }
     function canManageGroup() { return isSuperAdmin() || Boolean(activeMember && ['owner', 'admin'].includes(activeMember.role)); }
     function safeError(error) {
         const messages = {
@@ -146,13 +147,47 @@
     async function createGroup(event) {
         event.preventDefault();
         if (!signedIn() || !canCreateGroups()) return;
+        if (!user.emailVerified) { el('createGroupFeedback').textContent = 'Egiaztatu posta elektronikoa taldea sortu aurretik.'; return; }
         const name = el('newGroupName').value.trim();
-        if (!name) return;
+        const creatorName = el('newGroupParticipantName').value.trim();
+        const invitees = Array.from(document.querySelectorAll('.initial-invite-row')).map(row => ({
+            name: row.querySelector('[data-field="name"]').value.trim(),
+            email: normalizeEmail(row.querySelector('[data-field="email"]').value)
+        })).filter(invitee => invitee.name || invitee.email);
+        if (!name || !creatorName) return;
+        if (invitees.some(invitee => !invitee.name || !invitee.email)) {
+            el('createGroupFeedback').textContent = 'Gonbidapen bakoitzean, sartu bidaiariaren izena eta posta elektronikoa.';
+            return;
+        }
+        const inviteEmails = new Set();
+        for (const invitee of invitees) {
+            if (inviteEmails.has(invitee.email)) { el('createGroupFeedback').textContent = 'Ez errepikatu posta elektroniko bat gonbidapenetan.'; return; }
+            inviteEmails.add(invitee.email);
+        }
         const wantsImport = el('importLocalData').checked && !root.localStorage.getItem('kotxeaImportCompleted') && hasLocalLegacyData();
         const imported = wantsImport ? localLegacyState() : { state: blankGroupState() };
         if (imported.error) { el('createGroupFeedback').textContent = imported.error; return; }
-        const initialState = imported.state || api.emptyState();
+        const initialState = imported.state || blankGroupState();
         if (!api.validateState(initialState)) { el('createGroupFeedback').textContent = 'Gailuko bidaia-datuak ezin dira inportatu; deskargatu kopia JSON bat eta berrikusi.'; return; }
+        const existingCreator = initialState.people.find(person => person.name.trim().toLocaleLowerCase() === creatorName.toLocaleLowerCase());
+        const creatorPerson = existingCreator || { id: db.collection('groups').doc().id, name: creatorName, active: true };
+        if (!existingCreator) {
+            initialState.people.push(creatorPerson);
+            initialState.opening[creatorPerson.id] = { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0 };
+        }
+        creatorPerson.linkedUid = user.uid;
+        const invitedPeople = [];
+        for (const invitee of invitees) {
+            if (initialState.people.some(person => person.name.trim().toLocaleLowerCase() === invitee.name.toLocaleLowerCase())) {
+                el('createGroupFeedback').textContent = 'Badago izen hori duen bidaiari bat. Erabili izen desberdin bat.';
+                return;
+            }
+            const person = { id: db.collection('groups').doc().id, name: invitee.name, active: true };
+            initialState.people.push(person);
+            initialState.opening[person.id] = { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0 };
+            invitedPeople.push({ ...invitee, person });
+        }
+        if (!api.validateState(initialState)) { el('createGroupFeedback').textContent = 'Ezin izan da bidaiarien zerrenda balioztatu.'; return; }
         if (wantsImport && !root.confirm('Gailuko historia eta hasierako saldoak talde berrira kopiatuko dira. Jatorrizko datuak gailuan gordeko dira. Jarraitu?')) return;
 
         const submit = el('createGroupForm').querySelector('button[type="submit"]');
@@ -179,9 +214,10 @@
                 email: normalizeEmail(user.email),
                 displayName: user.displayName || user.email || 'Administrador',
                 role: 'owner',
-                personId: null,
+                personId: creatorPerson.id,
                 joinedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
+            batch.set(groupReference(groupId).collection('people').doc(safeDocId(creatorPerson.id)), personDocument(creatorPerson, initialState.opening[creatorPerson.id]));
             batch.set(db.collection('users').doc(user.uid).collection('groups').doc(groupId), {
                 groupId, groupName: name, role: 'owner', joinedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
@@ -190,9 +226,41 @@
             await finishGroupSetup(groupId, groupData);
             root.localStorage.removeItem(migrationKey);
             root.localStorage.setItem('kotxeaImportCompleted', '1');
+            const inviteLinks = [];
+            let inviteIssue = '';
+            for (const invitee of invitedPeople) {
+                const inviteRef = db.collection('invitations').doc();
+                try {
+                    await inviteRef.set({
+                        groupId, groupName: name, email: invitee.email, personId: invitee.person.id, personName: invitee.person.name,
+                        role: 'member', status: 'pending', createdBy: user.uid,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        expiresAt: firebase.firestore.Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
+                    });
+                    const inviteUrl = new URL(root.location.href);
+                    inviteUrl.search = '';
+                    inviteUrl.hash = '';
+                    inviteUrl.searchParams.set('invite', inviteRef.id);
+                    inviteLinks.push({ email: invitee.email, url: inviteUrl.toString() });
+                } catch (error) {
+                    console.error('Kotxea initial invitation failed', error);
+                    inviteIssue = 'Taldea sortu da, baina gonbidapen bat edo gehiago ezin izan dira sortu. Sortu berriro taldearen administraziotik: ' + safeError(error);
+                }
+            }
             el('createGroupForm').reset();
-            el('createGroupFeedback').textContent = 'Taldea prest dago.';
+            document.querySelectorAll('.initial-invite-row').forEach((row, index) => { if (index > 0) row.remove(); });
+            el('createGroupFeedback').textContent = inviteLinks.length ? 'Taldea prest dago. Gonbidapen-estekak agertzen dira taldeko administrazioan.' : 'Taldea prest dago.';
             await openGroup(groupId);
+            if (inviteLinks.length) {
+                el('inviteFeedback').replaceChildren();
+                inviteLinks.forEach(invite => {
+                    const row = document.createElement('p'); row.append(document.createTextNode('Gonbidatu ' + invite.email + ': '));
+                    addShareableLink(row, invite.url);
+                    el('inviteFeedback').append(row);
+                });
+                el('groupAdminTools').open = true;
+            }
+            if (inviteIssue) showStatus(inviteIssue);
         } catch (error) {
             console.error('Kotxea group setup failed', error);
             el('createGroupFeedback').textContent = 'Taldea sortzea ez da amaitu: ' + safeError(error) + ' Ez sortu beste talde bat; saiatu inportazioa talde-zerrendatik jarraitzen.';
@@ -200,6 +268,12 @@
         } finally {
             submit.disabled = false;
         }
+    }
+    function addShareableLink(container, url) {
+        const link = document.createElement('a'); link.href = url; link.textContent = 'Gonbidapen-esteka'; link.target = '_blank'; link.rel = 'noopener';
+        const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'secondary-button'; copy.textContent = 'Esteka kopiatu';
+        copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(url); copy.textContent = 'Kopiatuta'; } catch (_) { container.append(document.createTextNode(' ' + url)); } });
+        container.append(link, document.createTextNode(' '), copy);
     }
     async function resumeMigration(groupId) {
         const raw = root.localStorage.getItem(MIGRATION_KEY + ':' + groupId);
@@ -252,6 +326,7 @@
         if (!signedIn()) return;
         setGate('groupsPanel');
         el('createGroupDetails').hidden = !canCreateGroups();
+        el('groupSearchPanel').hidden = !canCreateGroups();
         const pendingImportDocs = new Set();
         for (let i = 0; i < root.localStorage.length; i++) {
             const key = root.localStorage.key(i);
@@ -264,7 +339,10 @@
         const userGroups = await loadMyGroups();
         const membershipIds = new Set(userGroups.map(group => group.id));
         userGroups.forEach(group => addGroupButton(myGroupsList, group, { resume: group.status === 'initializing' && pendingImportDocs.has(group.id) }));
-        if (userGroups.length === 0 && !canCreateGroups()) {
+        el('globalAdminFromGroupsBtn').hidden = !isSuperAdmin();
+        if (isSuperAdmin()) {
+            el('groupsFeedback').textContent = 'Administratzaile globala zara. Erabili administrazio-panela taldeak eta kontuak ikusteko.';
+        } else if (userGroups.length === 0 && !canCreateGroups()) {
             el('groupsFeedback').textContent = platformRole ? 'Oraindik ez dago talderik. Bilatu bat eta eskatu sartzeko.' : 'Kontu honek ez du talde-sortzaile rolik. Eskatu superadministratzaileari taldea sortzeko baimena.';
         } else {
             el('groupsFeedback').textContent = userGroups.length ? 'Aukeratu zein taldetan lan egin.' : 'Sortu lehen taldea edo bilatu taldea.';
@@ -310,7 +388,7 @@
         } catch (error) { list.textContent = safeError(error); }
     }
     async function requestJoin(group) {
-        if (!user.emailVerified) { showStatus('Egiaztatu zure posta elektronikoa talde batean sartzeko eskaera bidali aurretik.'); return; }
+        if (!user.emailVerified || !canCreateGroups()) { showStatus('Egiaztatu zure posta elektronikoa eta zure baimena talde batean sartzeko eskaera bidali aurretik.'); return; }
         const requestId = group.id + '_' + user.uid;
         try {
             const requestRef = db.collection('joinRequests').doc(requestId);
@@ -357,7 +435,7 @@
         list.append(item);
     }
     async function acceptInvite(inviteId) {
-        if (!user || !user.emailVerified) { showStatus('Egiaztatu posta elektronikoa gonbidapena onartu aurretik.'); return; }
+        if (!user || !user.emailVerified || !canCreateGroups()) { showStatus('Egiaztatu zure posta elektronikoa eta zure baimena gonbidapena onartu aurretik.'); return; }
         try {
             await db.runTransaction(async transaction => {
                 const inviteRef = db.collection('invitations').doc(inviteId);
@@ -704,19 +782,59 @@
                 ? (await db.collection('groups').get()).docs.map(doc => ({ id: doc.id, ...doc.data() }))
                 : (await loadMyGroups()).filter(group => ['owner', 'admin'].includes((group.membership || {}).role));
             if (!groups.length) list.textContent = 'Ez dago kudeatzeko talderik.';
-            groups.forEach(group => {
+            // This dashboard reads each group's current history, which is practical for the family-scale dataset.
+            // Store per-group aggregates if the number of groups or trips grows substantially.
+            await Promise.all(groups.map(async group => {
                 const row = document.createElement('li'); row.className = 'group-picker-item';
-                const label = document.createElement('span'); label.textContent = group.name;
+                const text = document.createElement('div');
+                const label = document.createElement('strong'); label.textContent = group.name || 'Taldea';
+                const description = document.createElement('span');
+                if (group.status === 'active') {
+                    const groupRef = groupReference(group.id);
+                    const [members, people, trips, requests, invitations] = await Promise.all([
+                        groupRef.collection('members').get(), groupRef.collection('people').get(), groupRef.collection('trips').get(),
+                        db.collection('joinRequests').where('groupId', '==', group.id).where('status', '==', 'pending').get(),
+                        db.collection('invitations').where('groupId', '==', group.id).where('status', '==', 'pending').get()
+                    ]);
+                    const state = normalizedStateFromSnapshots(people, trips);
+                    const summary = api.calculateSummary(state);
+                    const balances = state.people.map(person => person.name + ' ' + Number(summary[person.id].emaitza).toLocaleString('eu-ES', { maximumFractionDigits: 2 })).join(' · ');
+                    description.textContent = members.size + ' erabiltzaile · ' + trips.size + ' bidaia · ' + requests.size + ' eskaera · ' + invitations.size + ' gonbidapen' + (balances ? ' · ' + balances : ' · bidaiaririk gabe');
+                } else description.textContent = 'Taldea prestatzen ari da';
                 const open = document.createElement('button'); open.type = 'button'; open.textContent = 'Kudeatu'; open.addEventListener('click', () => openGroup(group.id));
-                row.append(label, open); list.append(row);
-            });
+                text.append(label, description); row.append(text, open); list.append(row);
+            }));
             if (isSuperAdmin()) {
-                const users = await db.collection('users').get();
+                el('adminFeedback').textContent = 'Kontu guztiak kargatzen…';
+                const result = await firebase.app().functions('us-central1').httpsCallable('listAuthUsers')({});
+                const users = result.data.users || [];
                 const select = el('adminUserSelect'); select.replaceChildren(new Option('Aukeratu erabiltzailea', ''));
-                users.forEach(doc => {
-                    const profile = doc.data();
-                    if (doc.id !== user.uid) select.add(new Option((profile.displayName || profile.email || doc.id) + (profile.email ? ' · ' + profile.email : ''), doc.id));
+                const userList = el('adminUsersList'); userList.replaceChildren();
+                el('adminUserCount').textContent = users.length + ' kontu Firebase Authentication-en.';
+                users.forEach(profile => {
+                    const name = profile.displayName || profile.email || profile.uid;
+                    const status = profile.disabled ? 'desgaituta' : profile.emailVerified ? 'posta egiaztatuta' : 'posta egiaztatu gabe';
+                    const role = profile.platformRole === 'superadmin' ? 'administratzaile globala' : profile.platformRole === 'creator' ? 'sortzailea' : 'kiderik gabeko kontua';
+                    const row = document.createElement('li'); row.className = 'group-picker-item';
+                    const text = document.createElement('div');
+                    const title = document.createElement('strong'); title.textContent = name;
+                    const details = document.createElement('span'); details.textContent = [profile.email, status, role, profile.platformRole === 'superadmin' ? (profile.canParticipate ? 'taldeetan parte har dezake' : 'taldeetan ez du parte hartzen') : ''].filter(Boolean).join(' · ');
+                    text.append(title, details); row.append(text);
+                    if (profile.uid !== user.uid) {
+                        select.add(new Option(name + (profile.email ? ' · ' + profile.email : ''), profile.uid));
+                        const manage = document.createElement('button'); manage.type = 'button'; manage.textContent = 'Kudeatu rola';
+                        manage.addEventListener('click', () => {
+                            select.value = profile.uid;
+                            el('platformRoleSelect').value = ['creator', 'superadmin'].includes(profile.platformRole) ? profile.platformRole : 'creator';
+                            el('platformCanParticipate').checked = profile.canParticipate === true;
+                            el('platformCanParticipate').closest('label').hidden = el('platformRoleSelect').value !== 'superadmin';
+                            el('platformRoleForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        });
+                        row.append(manage);
+                    }
+                    userList.append(row);
                 });
+                el('adminFeedback').textContent = '';
             }
         } catch (error) { el('adminFeedback').textContent = 'Ezin izan da administrazio-panela kargatu: ' + safeError(error); }
     }
@@ -729,7 +847,10 @@
         try {
             const ref = db.collection('platformRoles').doc(uid);
             if (role === 'none') await ref.delete();
-            else await ref.set({ role, grantedBy: user.uid, grantedAt: firebase.firestore.FieldValue.serverTimestamp() });
+            else await ref.set({
+                role, grantedBy: user.uid, grantedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                ...(role === 'superadmin' && el('platformCanParticipate').checked ? { canParticipate: true } : {})
+            });
             el('adminFeedback').textContent = 'Plataforma-rola eguneratuta.';
             await loadAdminPanel();
         } catch (error) { el('adminFeedback').textContent = 'Ezin izan da rola aldatu: ' + safeError(error); }
@@ -794,6 +915,7 @@
     async function loadProfileAndGate() {
         if (!user) { activeGroup = null; activeMember = null; setGate('authPanel'); el('resendVerificationBtn').hidden = true; el('verifiedContinueBtn').hidden = true; return; }
         el('accountMenuBtn').textContent = user.displayName || user.email || 'Kontua';
+        if (!el('newGroupParticipantName').value) el('newGroupParticipantName').value = user.displayName || '';
         if (verificationRequired(user)) {
             setGate('authPanel');
             el('authTitle').textContent = 'Egiaztatu zure posta elektronikoa';
@@ -813,6 +935,7 @@
         }
         const roleDoc = await db.collection('platformRoles').doc(user.uid).get();
         platformRole = roleDoc.exists ? roleDoc.data().role : null;
+        platformCanParticipate = roleDoc.exists && roleDoc.data().canParticipate === true;
         const uidText = user.uid;
         el('bootstrapHelp').hidden = Boolean(platformRole);
         el('refreshRoleBtn').hidden = Boolean(platformRole);
@@ -822,7 +945,7 @@
         el('globalAdminNav').hidden = !platformRole;
         await refreshGroupsGate();
     }
-    async function signOut() { if (groupUnsubscribe) groupUnsubscribe(); groupUnsubscribe = null; activeGroup = null; activeMember = null; platformRole = null; await auth.signOut(); }
+    async function signOut() { if (groupUnsubscribe) groupUnsubscribe(); groupUnsubscribe = null; activeGroup = null; activeMember = null; platformRole = null; platformCanParticipate = false; await auth.signOut(); }
     async function start(options) {
         appStateCallback = options && options.onState;
         statusCallback = options && options.onStatus;
@@ -832,7 +955,7 @@
         try { await db.enablePersistence({ synchronizeTabs: true }); } catch (error) { if (!error || error.code !== 'failed-precondition') console.warn('Firestore offline cache disabled:', error && error.code); }
         auth.onAuthStateChanged(async authUser => {
             user = authUser;
-            if (!authUser) { platformRole = null; await loadProfileAndGate(); return; }
+            if (!authUser) { platformRole = null; platformCanParticipate = false; await loadProfileAndGate(); return; }
             try { await loadProfileAndGate(); }
             catch (error) { showProfileLoadError(error); }
         });
@@ -848,39 +971,68 @@
             catch (error) { showProfileLoadError(error); }
         });
         el('createGroupForm').addEventListener('submit', createGroup);
+        let initialInviteCount = 1;
+        el('addInitialInviteBtn').addEventListener('click', () => {
+            initialInviteCount += 1;
+            const row = document.createElement('div'); row.className = 'initial-invite-row';
+            row.innerHTML = '<div class="field"><label for="initialInviteName' + initialInviteCount + '">Bidaiariaren izena</label><input id="initialInviteName' + initialInviteCount + '" data-field="name" maxlength="80" autocomplete="off"></div><div class="field"><label for="initialInviteEmail' + initialInviteCount + '">Posta elektronikoa</label><input id="initialInviteEmail' + initialInviteCount + '" data-field="email" type="email" autocomplete="email"></div>';
+            const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button'; remove.textContent = 'Kendu gonbidapen hau';
+            remove.addEventListener('click', () => row.remove()); row.append(remove);
+            el('initialInviteRows').append(row);
+        });
         el('groupSearchForm').addEventListener('submit', event => { event.preventDefault(); refreshDiscoverableGroups(); });
         el('signOutFromGroupsBtn').addEventListener('click', signOut);
         el('accountMenuBtn').addEventListener('click', refreshGroupsGate);
         el('activeGroupSelect').addEventListener('change', event => openGroup(event.target.value));
         el('changeGroupNav').addEventListener('click', refreshGroupsGate);
         el('globalAdminNav').addEventListener('click', loadAdminPanel);
+        el('globalAdminFromGroupsBtn').addEventListener('click', loadAdminPanel);
         el('backToGroupsBtn').addEventListener('click', refreshGroupsGate);
         el('platformRoleForm').addEventListener('submit', savePlatformRole);
+        const syncPlatformParticipationOption = () => {
+            const option = el('platformCanParticipate').closest('label');
+            option.hidden = el('platformRoleSelect').value !== 'superadmin';
+            if (option.hidden) el('platformCanParticipate').checked = false;
+        };
+        el('platformRoleSelect').addEventListener('change', syncPlatformParticipationOption);
+        syncPlatformParticipationOption();
         el('adminUserSelect').addEventListener('change', async () => {
             const uid = el('adminUserSelect').value;
             el('platformRoleSelect').value = 'creator';
+            el('platformCanParticipate').checked = false;
             if (!uid) return;
             const role = await db.collection('platformRoles').doc(uid).get();
-            if (!role.exists || role.data().role !== 'creator') el('platformRoleSelect').value = 'creator';
+            el('platformRoleSelect').value = role.exists && ['creator', 'superadmin'].includes(role.data().role) ? role.data().role : 'creator';
+            el('platformCanParticipate').checked = role.exists && role.data().canParticipate === true;
+            syncPlatformParticipationOption();
         });
         el('inviteForm').addEventListener('submit', inviteMember);
         el('saveGroupVisibilityBtn').addEventListener('click', saveDiscoverability);
         root.addEventListener('beforeinstallprompt', event => { event.preventDefault(); deferredInstallPrompt = event; el('installAppBtn').hidden = false; });
-        el('installAppBtn').addEventListener('click', async () => {
-            if (!deferredInstallPrompt) {
-                const isIOS = /iPad|iPhone|iPod/.test(root.navigator.userAgent);
-                el('installHelp').textContent = isIOS
-                    ? 'iPhone/iPad: toca Compartir y elige “Añadir a pantalla de inicio”.'
+        el('installAppBtn').addEventListener('click', () => {
+            const isIOS = /iPad|iPhone|iPod/.test(root.navigator.userAgent) || (root.navigator.platform === 'MacIntel' && root.navigator.maxTouchPoints > 1);
+            const text = deferredInstallPrompt
+                ? 'Instalar Kotxea añade un acceso a la pantalla de inicio y permite abrirla como una aplicación. Tus datos seguirán sincronizándose con tu cuenta.'
+                : isIOS
+                    ? 'En Safari, toca Compartir y elige “Añadir a pantalla de inicio”. Después podrás abrir Kotxea desde el nuevo icono.'
                     : /Android/.test(root.navigator.userAgent)
                         ? 'Abre el menú del navegador (⋮) y elige “Instalar aplicación” o “Añadir a pantalla de inicio”.'
-                        : 'Usa el menú del navegador o el icono de instalación de la barra de direcciones.';
-                el('installHelp').hidden = false;
-                return;
-            }
-            deferredInstallPrompt.prompt();
-            await deferredInstallPrompt.userChoice;
+                        : 'Abre el menú del navegador o usa el icono de instalación de la barra de direcciones para añadir Kotxea a tu dispositivo.';
+            el('installDialogText').textContent = text;
+            el('installConfirmBtn').hidden = !deferredInstallPrompt;
+            el('installDialog').showModal();
+        });
+        el('installConfirmBtn').addEventListener('click', async () => {
+            if (!deferredInstallPrompt) return;
+            const promptEvent = deferredInstallPrompt;
             deferredInstallPrompt = null;
-            el('installAppBtn').hidden = true;
+            el('installDialog').close();
+            await promptEvent.prompt();
+            const choice = await promptEvent.userChoice;
+            const installed = choice && choice.outcome === 'accepted'
+                || root.matchMedia('(display-mode: standalone)').matches
+                || root.navigator.standalone === true;
+            el('installAppBtn').hidden = Boolean(installed);
         });
         const standalone = root.matchMedia('(display-mode: standalone)').matches || root.navigator.standalone === true;
         if (!standalone) el('installAppBtn').hidden = false;

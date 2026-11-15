@@ -8,6 +8,7 @@ Aplicación web móvil para coordinar viajes compartidos al trabajo, repartir tu
 - Firebase Authentication gestiona las cuentas con Google o correo y contraseña.
 - Cloud Firestore guarda cada grupo, sus personas, miembros, viajes, invitaciones y solicitudes.
 - `firestore.rules` limita el acceso en Firebase; la interfaz por sí sola no concede permisos.
+- Una Cloud Function protegida con Firebase Authentication permite al superadministrador consultar el listado completo de cuentas de Firebase Authentication.
 - `manifest.json` y `service-worker.js` permiten instalar la web como PWA. Hace falta conexión para iniciar sesión y sincronizar los cambios.
 - Las invitaciones generan un enlace para copiar y enviar manualmente. El proyecto no envía correos de invitación automáticamente.
 
@@ -15,17 +16,19 @@ El proyecto Firebase asociado es `kotxea-urtxe`. `.firebaserc` lo selecciona por
 
 ## Publicar la aplicación y las reglas de Firebase
 
-El workflow de GitHub Actions publica juntos Firebase Hosting, las reglas de Firestore y sus índices cuando se actualiza `main`. Antes de desplegar, ejecuta las pruebas de la aplicación y una validación de Firebase CLI. También se puede iniciar manualmente desde la pestaña Actions.
+El workflow de GitHub Actions publica juntos Firebase Hosting, las reglas e índices de Firestore y Cloud Functions cuando se actualiza `main`. Antes de desplegar, ejecuta las pruebas de la aplicación y una validación de Firebase CLI. También se puede iniciar manualmente desde la pestaña Actions.
 
-Para habilitar el despliegue automático, crea una cuenta de servicio dedicada al despliegue en el proyecto `kotxea-urtxe` y guarda su JSON completo en GitHub → Settings → Secrets and variables → Actions, con el nombre `FIREBASE_SERVICE_ACCOUNT_KOTXEA_URTXE`. Dale solo los permisos necesarios para Firebase Hosting, reglas de Firestore e índices. No pongas ese JSON en Git, en `firebase-config.js` ni en el código de la web.
+Para habilitar el despliegue automático, crea una cuenta de servicio dedicada al despliegue en el proyecto `kotxea-urtxe` y guarda su JSON completo en GitHub → Settings → Secrets and variables → Actions, con el nombre `FIREBASE_SERVICE_ACCOUNT_KOTXEA_URTXE`. Además de Hosting, reglas e índices, la cuenta necesita `Cloud Functions Admin` (`roles/cloudfunctions.admin`) y `Service Account User` (`roles/iam.serviceAccountUser`) para desplegar la función. No pongas ese JSON en Git, en `firebase-config.js` ni en el código de la web.
+
+Cloud Functions requiere que el proyecto Firebase use el plan Blaze con una cuenta de facturación vinculada. La función `listAuthUsers` no reserva instancias; aun así, configura alertas de presupuesto en Google Cloud antes de usar servicios de pago.
 
 El primer despliegue manual también puede hacerse desde esta carpeta, con Firebase CLI instalado y una cuenta con acceso al proyecto:
 
 ```sh
 firebase login
 node scripts/prepare-hosting.js
-firebase deploy --dry-run --only "hosting,firestore:rules,firestore:indexes" --project kotxea-urtxe
-firebase deploy --only "hosting,firestore:rules,firestore:indexes" --project kotxea-urtxe
+firebase deploy --dry-run --only "hosting,firestore:rules,firestore:indexes,functions" --project kotxea-urtxe
+firebase deploy --only "hosting,firestore:rules,firestore:indexes,functions" --project kotxea-urtxe
 ```
 
 El sitio de Firebase Hosting `kotxea-urtxe` ya existe y está disponible en `https://kotxea-urtxe.web.app`. Comprueba que ese dominio figure en Firebase Authentication → Configuración → Dominios autorizados para permitir el inicio de sesión. El workflow conserva también la publicación en GitHub Pages mientras se valida Hosting; ambas URLs recibirán el mismo frontend y Firestore usará las mismas reglas.
@@ -48,11 +51,11 @@ La consola Firebase permite esta primera operación aunque las reglas de cliente
 
 ## Crear el grupo inicial y añadir a la familia
 
-1. Con la cuenta de Mikel, crea el grupo de la ruta Donostia–Mondragón. Marca **importar los datos de este dispositivo** en el navegador donde está el historial actual.
-2. En la administración del grupo, crea una invitación para el correo de tu mujer y elige **Taldeko administratzailea**. No hace falta asociarla a una persona viajera.
-3. Copia el enlace y envíaselo. Ella entra con ese mismo correo y verifica la cuenta. La aceptación la añade al grupo.
-4. En **Admin**, Mikel puede seleccionar su cuenta y concederle el rol de creadora de grupos (`creator`). Así podrá crear otros grupos y administrar los suyos, sin acceso a los datos de grupos ajenos.
-5. Los viajeros pueden crear una cuenta, buscar un grupo público y pedir acceso. Un administrador del grupo acepta la solicitud y la vincula a una persona existente o crea una nueva.
+1. Registra la cuenta de Mikel y asigna su documento `platformRoles/{uid}` con `role: superadmin` en Firebase Console. Deja `canParticipate` sin marcar; así tendrá acceso global sin figurar como viajero.
+2. Desde la cuenta de tu mujer, crea el grupo de la ruta Donostia–Mondragón. Ella quedará vinculada como participante y administradora del grupo. Marca **importar los datos de este dispositivo** solo si ese navegador contiene el historial que quieres conservar.
+3. Puede crear una invitación para cada participante al configurar el grupo o desde su administración. Copia y comparte los enlaces; la otra persona debe registrarse con el correo destinatario y verificarlo antes de aceptar.
+4. En **Admin**, Mikel puede conceder a una persona de confianza el rol de administrador global. Para que también participe en grupos, marca **Administratzaile global honek taldeetan parte har dezake**.
+5. Cualquier cuenta con correo verificado puede crear un grupo. Los viajeros también pueden buscar un grupo público y pedir acceso; un administrador del grupo o el superadministrador acepta la solicitud y la vincula a una persona existente o crea una nueva.
 
 Una misma cuenta puede ser miembro de varios grupos. El superadministrador puede ver y administrar todos los grupos desde la sección **Admin**.
 

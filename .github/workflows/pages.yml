@@ -35,6 +35,9 @@ jobs:
       - name: Install application and rules-test dependencies
         run: npm ci
 
+      - name: Install Cloud Functions dependencies
+        run: npm ci --prefix functions
+
       - name: Install Firebase CLI
         run: npm install --global firebase-tools@15.36.0
 
@@ -43,6 +46,9 @@ jobs:
 
       - name: Check Firestore rules in the emulator
         run: npm run test:rules
+
+      - name: Check Cloud Functions source
+        run: node --check functions/index.js
 
       - name: Prepare hosting files
         run: node scripts/prepare-hosting.js
@@ -58,12 +64,12 @@ jobs:
           fi
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
           chmod 600 "$GOOGLE_APPLICATION_CREDENTIALS"
-          firebase deploy --dry-run --only hosting,firestore:rules,firestore:indexes --project kotxea-urtxe
+          firebase deploy --dry-run --only hosting,firestore:rules,firestore:indexes,functions --project kotxea-urtxe
 
-      - name: Deploy Hosting, Firestore rules, and indexes
+      - name: Deploy Hosting, Firestore rules, indexes, and Functions
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
-        run: firebase deploy --only hosting,firestore:rules,firestore:indexes --project kotxea-urtxe
+        run: firebase deploy --only hosting,firestore:rules,firestore:indexes,functions --project kotxea-urtxe
 
       - name: Remove temporary Firebase credentials
         if: always()
