@@ -7,7 +7,7 @@ const {
     assertSucceeds,
     initializeTestEnvironment
 } = require('@firebase/rules-unit-testing');
-const { doc, setDoc, writeBatch } = require('firebase/firestore');
+const { doc, getDoc, setDoc, updateDoc, writeBatch } = require('firebase/firestore');
 
 const projectId = 'demo-kotxea';
 const rules = fs.readFileSync(path.join(__dirname, 'firestore.rules'), 'utf8');
@@ -115,5 +115,48 @@ test('the global superadmin can grant global administration to another account b
     }));
     await assertFails(setDoc(doc(db, 'platformRoles', uid), {
         role: 'creator', grantedBy: uid, grantedAt: new Date()
+    }));
+});
+
+test('a deletion tombstone blocks an already-issued sign-in token immediately', async () => {
+    const uid = 'deleted-user';
+    await seedAccount(uid, null);
+    await testEnv.withSecurityRulesDisabled(async context => {
+        await setDoc(doc(context.firestore(), 'deletedAccounts', uid), { state: 'deleted' });
+    });
+    const db = testEnv.authenticatedContext(uid, {
+        email: `${uid}@example.com`, email_verified: true
+    }).firestore();
+
+    await assertFails(getDoc(doc(db, 'users', uid)));
+    await assertFails(getDoc(doc(db, 'deletedAccounts', uid)));
+});
+
+test('a regular account can save its separate first and last names', async () => {
+    const uid = 'named-user';
+    await seedAccount(uid, null);
+    const db = testEnv.authenticatedContext(uid, {
+        email: `${uid}@example.com`, email_verified: true
+    }).firestore();
+
+    await assertSucceeds(updateDoc(doc(db, 'users', uid), {
+        displayName: 'Ana López García', firstName: 'Ana', lastName: 'López García'
+    }));
+});
+
+test('a global admin cannot restore a platform role to a deleted account', async () => {
+    const adminUid = 'global-admin';
+    const deletedUid = 'deleted-user';
+    await seedAccount(adminUid, 'superadmin');
+    await seedAccount(deletedUid, null);
+    await testEnv.withSecurityRulesDisabled(async context => {
+        await setDoc(doc(context.firestore(), 'deletedAccounts', deletedUid), { state: 'deleted' });
+    });
+    const db = testEnv.authenticatedContext(adminUid, {
+        email: `${adminUid}@example.com`, email_verified: true
+    }).firestore();
+
+    await assertFails(setDoc(doc(db, 'platformRoles', deletedUid), {
+        role: 'superadmin', grantedBy: adminUid, grantedAt: new Date()
     }));
 });

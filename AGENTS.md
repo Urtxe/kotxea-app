@@ -30,7 +30,10 @@
 ## Reglas específicas del dominio
 
 - Una cuenta verificada puede crear grupos y queda vinculada como participante y administradora del grupo. La cuenta global `superadmin` solo participa en grupos si su documento `platformRoles/{uid}` tiene `canParticipate: true`; la cuenta inicial de Mikel no debe participar. El superadministrador ve todos los grupos y usuarios; puede conceder ese rol a otras cuentas.
-- `functions/listAuthUsers` usa Firebase Admin SDK y debe comprobar el rol global en el servidor antes de devolver cuentas de Authentication. No muevas esta consulta privilegiada al navegador ni debilites las reglas de Firestore para listar usuarios.
+- Los usuarios normales no necesitan un rol de plataforma `creator`: cualquier cuenta con correo verificado puede crear grupos. El único rol especial de plataforma es `superadmin`.
+- `functions/listAuthUsers` usa Firebase Admin SDK y debe comprobar el rol global en el servidor antes de devolver cuentas de Authentication. `functions/setPlatformUser` y `functions/deletePlatformUser` también validan el rol en el servidor. No muevas estas operaciones privilegiadas al navegador ni debilites las reglas de Firestore.
+- Al borrar una cuenta, conserva grupos, viajes, personas y balances. Transfiere la propiedad de grupos activos a otro miembro cuando sea posible; no borres cuentas que sean el único miembro de un grupo ni dejen incompleta una importación. Desvincula `linkedUid` y elimina membresías y referencias personales.
+- `deletedAccounts/{uid}` es un tombstone permanente que invalida tokens antiguos en `firestore.rules` y evita restaurar roles o membresías. Créalo antes de limpiar una cuenta y nunca lo elimines durante reintentos.
 - Una cuenta puede pertenecer a varios grupos; los roles `owner` y `admin` gestionan un grupo. La membresía y los roles deben validarse también en las reglas, no solo ocultando controles de interfaz.
 - Las solicitudes de acceso y la aceptación de invitaciones requieren correo verificado. Las invitaciones están vinculadas al correo destinatario.
 - La creación de un grupo pasa por `initializing` y luego `active`. Si falla una importación parcial, conserva la opción de reanudarla y evita crear un grupo duplicado o descartar la copia local.
@@ -53,6 +56,7 @@
 
 - `npm test`: pruebas de lógica y del flujo básico de autenticación/interfaz.
 - `npm run test:rules`: inicia el emulador de Firestore con `firestore.rules` y comprueba permisos de creación de grupos.
+- `npm run test:functions`: inicia los emuladores de Firestore y Authentication para probar edición, permisos y borrado seguro de cuentas.
 - Si cambias reglas, autorización o escrituras de Firestore, amplía las pruebas del emulador para cubrir el comportamiento permitido y denegado.
 - Si cambias los archivos del shell, actualiza el inventario de `scripts/prepare-hosting.js` y comprueba las referencias de versión/cache en `index.html` y `service-worker.js`.
 - El workflow solo corre automáticamente en `main`; antes de integrar a `develop`, ejecuta localmente los checks focalizados necesarios.

@@ -20,7 +20,7 @@ El workflow de GitHub Actions publica juntos Firebase Hosting, las reglas e índ
 
 Para habilitar el despliegue automático, crea una cuenta de servicio dedicada al despliegue en el proyecto `kotxea-urtxe` y guarda su JSON completo en GitHub → Settings → Secrets and variables → Actions, con el nombre `FIREBASE_SERVICE_ACCOUNT_KOTXEA_URTXE`. Además de Hosting, reglas e índices, la cuenta necesita `Cloud Functions Admin` (`roles/cloudfunctions.admin`) y `Service Account User` (`roles/iam.serviceAccountUser`) sobre la cuenta de ejecución `firebase-adminsdk-fbsvc@kotxea-urtxe.iam.gserviceaccount.com`. No pongas ese JSON en Git, en `firebase-config.js` ni en el código de la web.
 
-Cloud Functions requiere que el proyecto Firebase use el plan Blaze con una cuenta de facturación vinculada. La función `listAuthUsers` no reserva instancias; aun así, configura alertas de presupuesto en Google Cloud antes de usar servicios de pago.
+Cloud Functions requiere que el proyecto Firebase use el plan Blaze con una cuenta de facturación vinculada. Las funciones `listAuthUsers`, `setPlatformUser` y `deletePlatformUser` verifican en el servidor el rol global. El borrado conserva grupos, viajes y balances, transfiere la propiedad de grupos activos cuando hay otro miembro y usa `deletedAccounts/{uid}` para invalidar sesiones antiguas. La limpieza de esa cuenta se puede reintentar sin quitar el tombstone. Configura alertas de presupuesto en Google Cloud antes de usar servicios de pago.
 
 El primer despliegue manual también puede hacerse desde esta carpeta, con Firebase CLI instalado y una cuenta con acceso al proyecto:
 

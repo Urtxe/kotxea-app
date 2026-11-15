@@ -775,7 +775,6 @@
         if (!platformRole) return;
         setGate('adminPanel');
         const list = el('adminGroupsList'); list.replaceChildren();
-        el('adminRoleTools').hidden = !isSuperAdmin();
         el('allUsersPanel').hidden = !isSuperAdmin();
         try {
             const groups = isSuperAdmin()
@@ -808,52 +807,88 @@
                 el('adminFeedback').textContent = 'Kontu guztiak kargatzen…';
                 const result = await firebase.app().functions('us-central1').httpsCallable('listAuthUsers')({});
                 const users = result.data.users || [];
-                const select = el('adminUserSelect'); select.replaceChildren(new Option('Aukeratu erabiltzailea', ''));
                 const userList = el('adminUsersList'); userList.replaceChildren();
                 el('adminUserCount').textContent = users.length + ' kontu Firebase Authentication-en.';
                 users.forEach(profile => {
-                    const name = profile.displayName || profile.email || profile.uid;
-                    const status = profile.disabled ? 'desgaituta' : profile.emailVerified ? 'posta egiaztatuta' : 'posta egiaztatu gabe';
-                    const role = profile.platformRole === 'superadmin' ? 'administratzaile globala' : profile.platformRole === 'creator' ? 'sortzailea' : 'kiderik gabeko kontua';
-                    const row = document.createElement('li'); row.className = 'group-picker-item';
-                    const text = document.createElement('div');
-                    const title = document.createElement('strong'); title.textContent = name;
-                    const details = document.createElement('span'); details.textContent = [profile.email, status, role, profile.platformRole === 'superadmin' ? (profile.canParticipate ? 'taldeetan parte har dezake' : 'taldeetan ez du parte hartzen') : ''].filter(Boolean).join(' · ');
-                    text.append(title, details); row.append(text);
-                    if (profile.uid !== user.uid) {
-                        select.add(new Option(name + (profile.email ? ' · ' + profile.email : ''), profile.uid));
-                        const manage = document.createElement('button'); manage.type = 'button'; manage.textContent = 'Kudeatu rola';
-                        manage.addEventListener('click', () => {
-                            select.value = profile.uid;
-                            el('platformRoleSelect').value = ['creator', 'superadmin'].includes(profile.platformRole) ? profile.platformRole : 'creator';
-                            el('platformCanParticipate').checked = profile.canParticipate === true;
-                            el('platformCanParticipate').closest('label').hidden = el('platformRoleSelect').value !== 'superadmin';
-                            el('platformRoleForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        });
-                        row.append(manage);
+                    const row = document.createElement('tr');
+                    const email = document.createElement('td'); email.textContent = profile.email || '—';
+                    const firstName = document.createElement('td'); firstName.textContent = profile.firstName || profile.displayName || '—';
+                    const lastName = document.createElement('td'); lastName.textContent = profile.lastName || '—';
+                    const type = document.createElement('td');
+                    type.textContent = profile.deletionPending ? 'Borrado pendiente' : profile.platformRole === 'superadmin' ? 'Administrador global' : 'Normal';
+                    const actions = document.createElement('td'); actions.className = 'admin-user-actions';
+                    if (!profile.deletionPending) {
+                        const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'secondary-button'; edit.textContent = 'Editar';
+                        edit.addEventListener('click', () => openPlatformUserEditor(profile));
+                        actions.append(edit);
                     }
+                    if (profile.uid !== user.uid) {
+                        const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'danger-button';
+                        remove.textContent = profile.deletionPending ? 'Reintentar borrado' : 'Borrar';
+                        remove.addEventListener('click', () => openPlatformUserDeletion(profile));
+                        actions.append(remove);
+                    } else if (!profile.deletionPending) actions.append(document.createTextNode('Tu cuenta'));
+                    row.append(email, firstName, lastName, type, actions);
                     userList.append(row);
                 });
+                if (!users.length) {
+                    const row = document.createElement('tr'); const empty = document.createElement('td');
+                    empty.colSpan = 5; empty.textContent = 'No hay cuentas registradas.'; row.append(empty); userList.append(row);
+                }
                 el('adminFeedback').textContent = '';
             }
         } catch (error) { el('adminFeedback').textContent = 'Ezin izan da administrazio-panela kargatu: ' + safeError(error); }
     }
-    async function savePlatformRole(event) {
+    function syncPlatformUserRoleFields() {
+        el('editPlatformParticipationRow').hidden = el('editPlatformRole').value !== 'superadmin';
+        if (el('editPlatformRole').value !== 'superadmin') el('editPlatformCanParticipate').checked = false;
+    }
+    function openPlatformUserEditor(profile) {
+        el('editPlatformUserUid').value = profile.uid;
+        el('editPlatformUserEmail').textContent = profile.email || '';
+        el('editPlatformFirstName').value = profile.firstName || profile.displayName || '';
+        el('editPlatformLastName').value = profile.lastName || '';
+        el('editPlatformRole').value = profile.platformRole === 'superadmin' ? 'superadmin' : 'normal';
+        el('editPlatformCanParticipate').checked = profile.canParticipate === true;
+        el('editPlatformRole').disabled = profile.uid === user.uid;
+        el('editPlatformCanParticipate').disabled = profile.uid === user.uid;
+        el('editPlatformUserFeedback').textContent = '';
+        syncPlatformUserRoleFields();
+        el('editPlatformUserDialog').showModal();
+    }
+    function openPlatformUserDeletion(profile) {
+        el('deletePlatformUserDescription').textContent = (profile.displayName || [profile.firstName, profile.lastName].filter(Boolean).join(' ') || profile.email) + ' · ' + profile.email;
+        el('deletePlatformUserFeedback').textContent = '';
+        el('confirmDeletePlatformUserButton').dataset.uid = profile.uid;
+        el('confirmDeletePlatformUserButton').disabled = false;
+        el('deletePlatformUserDialog').showModal();
+    }
+    async function savePlatformUser(event) {
         event.preventDefault();
         if (!isSuperAdmin()) return;
-        const uid = el('adminUserSelect').value;
-        const role = el('platformRoleSelect').value;
-        if (!uid) return;
+        const button = el('savePlatformUserButton'); button.disabled = true;
         try {
-            const ref = db.collection('platformRoles').doc(uid);
-            if (role === 'none') await ref.delete();
-            else await ref.set({
-                role, grantedBy: user.uid, grantedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                ...(role === 'superadmin' && el('platformCanParticipate').checked ? { canParticipate: true } : {})
+            await firebase.app().functions('us-central1').httpsCallable('setPlatformUser')({
+                uid: el('editPlatformUserUid').value,
+                firstName: el('editPlatformFirstName').value.trim(),
+                lastName: el('editPlatformLastName').value.trim(),
+                role: el('editPlatformRole').value,
+                canParticipate: el('editPlatformCanParticipate').checked
             });
-            el('adminFeedback').textContent = 'Plataforma-rola eguneratuta.';
+            el('editPlatformUserDialog').close();
             await loadAdminPanel();
-        } catch (error) { el('adminFeedback').textContent = 'Ezin izan da rola aldatu: ' + safeError(error); }
+        } catch (error) { el('editPlatformUserFeedback').textContent = safeError(error); }
+        finally { button.disabled = false; }
+    }
+    async function confirmDeletePlatformUser() {
+        const button = el('confirmDeletePlatformUserButton');
+        button.disabled = true;
+        try {
+            await firebase.app().functions('us-central1').httpsCallable('deletePlatformUser')({ uid: button.dataset.uid });
+            el('deletePlatformUserDialog').close();
+            await loadAdminPanel();
+        } catch (error) { el('deletePlatformUserFeedback').textContent = safeError(error); }
+        finally { button.disabled = false; }
     }
     function updateAuthFeedback(message) { el('authFeedback').textContent = message || ''; }
     function setRegistrationMode(value) {
@@ -861,6 +896,9 @@
         el('authSubmitBtn').textContent = value ? 'Kontua sortu' : 'Saioa hasi';
         el('authModeBtn').textContent = value ? 'Badut kontua; saioa hasi' : 'Kontu berria sortu';
         el('authPassword').autocomplete = value ? 'new-password' : 'current-password';
+        el('registrationNameFields').hidden = !value;
+        el('registrationFirstName').required = value;
+        el('registrationLastName').required = value;
         updateAuthFeedback('');
     }
     async function handleAuthSubmit(event) {
@@ -870,7 +908,16 @@
         const button = el('authSubmitBtn'); button.disabled = true;
         try {
             if (registrationMode) {
+                const firstName = el('registrationFirstName').value.trim();
+                const lastName = el('registrationLastName').value.trim();
+                if (!firstName || !lastName) throw new Error('Indica el nombre y los apellidos para crear la cuenta.');
+                const displayName = [firstName, lastName].join(' ');
                 const result = await auth.createUserWithEmailAndPassword(email, password);
+                await result.user.updateProfile({ displayName });
+                await db.collection('users').doc(result.user.uid).set({
+                    uid: result.user.uid, email, displayName, firstName, lastName,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
                 await result.user.sendEmailVerification(authActionSettings());
                 updateAuthFeedback('Egiaztapen-mezua bidali dizugu. Egiaztatu posta eta itzuli Kotxeara.');
                 el('resendVerificationBtn').hidden = false;
@@ -931,7 +978,7 @@
         const profileRef = db.collection('users').doc(user.uid);
         const profile = await profileRef.get();
         if (!profile.exists) {
-            await profileRef.set({ uid: user.uid, email: normalizeEmail(user.email), displayName: user.displayName || user.email || 'Erabiltzailea', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+            await profileRef.set({ uid: user.uid, email: normalizeEmail(user.email), displayName: user.displayName || user.email || 'Erabiltzailea', firstName: '', lastName: '', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
         }
         const roleDoc = await db.collection('platformRoles').doc(user.uid).get();
         platformRole = roleDoc.exists ? roleDoc.data().role : null;
@@ -988,24 +1035,13 @@
         el('globalAdminNav').addEventListener('click', loadAdminPanel);
         el('globalAdminFromGroupsBtn').addEventListener('click', loadAdminPanel);
         el('backToGroupsBtn').addEventListener('click', refreshGroupsGate);
-        el('platformRoleForm').addEventListener('submit', savePlatformRole);
-        const syncPlatformParticipationOption = () => {
-            const option = el('platformCanParticipate').closest('label');
-            option.hidden = el('platformRoleSelect').value !== 'superadmin';
-            if (option.hidden) el('platformCanParticipate').checked = false;
-        };
-        el('platformRoleSelect').addEventListener('change', syncPlatformParticipationOption);
-        syncPlatformParticipationOption();
-        el('adminUserSelect').addEventListener('change', async () => {
-            const uid = el('adminUserSelect').value;
-            el('platformRoleSelect').value = 'creator';
-            el('platformCanParticipate').checked = false;
-            if (!uid) return;
-            const role = await db.collection('platformRoles').doc(uid).get();
-            el('platformRoleSelect').value = role.exists && ['creator', 'superadmin'].includes(role.data().role) ? role.data().role : 'creator';
-            el('platformCanParticipate').checked = role.exists && role.data().canParticipate === true;
-            syncPlatformParticipationOption();
-        });
+        el('editPlatformUserForm').addEventListener('submit', savePlatformUser);
+        el('editPlatformRole').addEventListener('change', syncPlatformUserRoleFields);
+        el('confirmDeletePlatformUserButton').addEventListener('click', confirmDeletePlatformUser);
+        if (document.querySelectorAll) document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEventListener('click', () => {
+            const dialog = el(button.dataset.closeDialog);
+            if (dialog && dialog.open) dialog.close();
+        }));
         el('inviteForm').addEventListener('submit', inviteMember);
         el('saveGroupVisibilityBtn').addEventListener('click', saveDiscoverability);
         root.addEventListener('beforeinstallprompt', event => { event.preventDefault(); deferredInstallPrompt = event; el('installAppBtn').hidden = false; });

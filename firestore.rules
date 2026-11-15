@@ -1,7 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
+    function deletedAccountPath(uid) { return /databases/$(database)/documents/deletedAccounts/$(uid); }
+    function signedIn() { return request.auth != null && !exists(deletedAccountPath(request.auth.uid)); }
     function verified() { return signedIn() && request.auth.token.email_verified == true; }
     function rolePath(uid) { return /databases/$(database)/documents/platformRoles/$(uid); }
     function isSuperAdmin() {
@@ -34,8 +35,9 @@ service cloud.firestore {
       allow list: if isSuperAdmin();
       allow create, update: if isSuperAdmin()
         && uid != request.auth.uid
+        && !exists(deletedAccountPath(uid))
         && request.resource.data.keys().hasOnly(['role', 'grantedBy', 'grantedAt', 'canParticipate'])
-        && request.resource.data.role in ['creator', 'superadmin']
+        && request.resource.data.role == 'superadmin'
         && (!('canParticipate' in request.resource.data) || request.resource.data.canParticipate == false || request.resource.data.role == 'superadmin')
         && request.resource.data.grantedBy == request.auth.uid;
       allow delete: if isSuperAdmin() && uid != request.auth.uid;
@@ -47,10 +49,14 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == uid
         && request.resource.data.uid == uid
         && request.resource.data.email == request.auth.token.email
-        && request.resource.data.keys().hasOnly(['uid', 'email', 'displayName', 'createdAt']);
+        && request.resource.data.keys().hasOnly(['uid', 'email', 'displayName', 'firstName', 'lastName', 'createdAt'])
+        && (!('firstName' in request.resource.data) || request.resource.data.firstName is string && request.resource.data.firstName.size() <= 80)
+        && (!('lastName' in request.resource.data) || request.resource.data.lastName is string && request.resource.data.lastName.size() <= 120);
       allow update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'displayName'])
-        && request.resource.data.uid == uid;
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'displayName', 'firstName', 'lastName'])
+        && request.resource.data.uid == uid
+        && (!('firstName' in request.resource.data) || request.resource.data.firstName is string && request.resource.data.firstName.size() <= 80)
+        && (!('lastName' in request.resource.data) || request.resource.data.lastName is string && request.resource.data.lastName.size() <= 120);
       allow delete: if false;
 
       match /groups/{groupId} {
@@ -77,6 +83,10 @@ service cloud.firestore {
         );
         allow delete: if false;
       }
+    }
+
+    match /deletedAccounts/{uid} {
+      allow read, write: if false;
     }
 
     match /groups/{groupId} {
@@ -108,6 +118,7 @@ service cloud.firestore {
       match /members/{uid} {
         allow get, list: if isSuperAdmin() || isGroupAdmin(groupId);
         allow create: if verified() && uid == request.auth.uid && canCreateGroups()
+            && !exists(deletedAccountPath(request.resource.data.uid))
             && getAfter(groupPath(groupId)).data.status == 'initializing'
             && getAfter(groupPath(groupId)).data.ownerUid == request.auth.uid
             && request.resource.data.personId is string
@@ -116,6 +127,7 @@ service cloud.firestore {
             && getAfter(/databases/$(database)/documents/groups/$(groupId)/people/$(request.resource.data.personId)).data.linkedUid == uid
             && getAfter(/databases/$(database)/documents/users/$(uid)/groups/$(groupId)).data.role == 'owner'
           || verified() && canCreateGroups() && uid == request.auth.uid && request.resource.data.uid == uid
+            && !exists(deletedAccountPath(request.resource.data.uid))
             && request.resource.data.role in ['member', 'admin']
             && ((request.resource.data.inviteId is string
                 && getAfter(/databases/$(database)/documents/invitations/$(request.resource.data.inviteId)).data.groupId == groupId
