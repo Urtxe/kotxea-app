@@ -881,27 +881,29 @@
             badge.textContent = profile.deletionPending ? 'Borrado pendiente' : profile.platformRole === 'superadmin' ? 'Administrador global' : 'Normal';
             typeCell.append(badge);
             addCell('Fecha de alta', formatAdminDate(profile.createdAt));
-            const connection = addCell('Última conexión / estado', '', 'admin-user-connection');
+            const connection = addCell('Conexión', '', 'admin-user-connection');
+            const connectionContent = document.createElement('span'); connectionContent.className = 'admin-user-connection-content';
             const lastSeenMs = profile.lastSeenAt ? Date.parse(profile.lastSeenAt) : NaN;
             if (Number.isFinite(lastSeenMs) && Date.now() - lastSeenMs < 120000) {
                 const online = document.createElement('span'); online.className = 'admin-presence-badge';
-                online.textContent = 'En línea'; connection.append(online);
+                online.textContent = 'En línea'; connectionContent.append(online);
             }
             const lastSeen = document.createElement('span'); lastSeen.className = 'admin-user-last-seen';
-            lastSeen.textContent = formatAdminDate(profile.lastSeenAt); connection.append(lastSeen);
+            lastSeen.textContent = formatAdminDate(profile.lastSeenAt); connectionContent.append(lastSeen); connection.append(connectionContent);
             const actions = document.createElement('td'); actions.className = 'admin-user-actions'; actions.dataset.label = 'Gestionar';
+            const actionButtons = document.createElement('div'); actionButtons.className = 'admin-user-actions-buttons';
             if (!profile.deletionPending) {
                 const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'secondary-button'; edit.textContent = 'Editar';
                 edit.addEventListener('click', () => openPlatformUserEditor(profile));
-                actions.append(edit);
+                actionButtons.append(edit);
             }
             if (profile.uid !== user.uid) {
                 const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'danger-button';
                 remove.textContent = profile.deletionPending ? 'Reintentar borrado' : 'Borrar';
                 remove.addEventListener('click', () => openPlatformUserDeletion(profile));
-                actions.append(remove);
+                actionButtons.append(remove);
             }
-            row.append(actions); userList.append(row);
+            actions.append(actionButtons); row.append(actions); userList.append(row);
         });
         if (!adminUsers.length) {
             const row = document.createElement('tr'); const empty = document.createElement('td');

@@ -1,13 +1,13 @@
-const CACHE_NAME = 'kotxea-shell-v12';
+const CACHE_NAME = 'kotxea-shell-v13';
 const SHELL_FILES = [
     './',
     './index.html',
     './styles.css',
-    './styles.css?v=16',
+    './styles.css?v=17',
     './script.js',
     './script.js?v=11',
     './cloud.js',
-    './cloud.js?v=10',
+    './cloud.js?v=11',
     './firebase-config.js',
     './manifest.json',
     './assets/kotxea-icon.svg'
