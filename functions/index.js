@@ -7,7 +7,11 @@ const { HttpsError, onCall } = require('firebase-functions/v2/https');
 
 initializeApp();
 
-exports.listAuthUsers = onCall({ region: 'us-central1', maxInstances: 2 }, async request => {
+exports.listAuthUsers = onCall({
+    region: 'us-central1',
+    maxInstances: 2,
+    serviceAccount: 'firebase-adminsdk-fbsvc@kotxea-urtxe.iam.gserviceaccount.com'
+}, async request => {
     const uid = request.auth && request.auth.uid;
     if (!uid) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
 

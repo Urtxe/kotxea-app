@@ -18,7 +18,7 @@ El proyecto Firebase asociado es `kotxea-urtxe`. `.firebaserc` lo selecciona por
 
 El workflow de GitHub Actions publica juntos Firebase Hosting, las reglas e índices de Firestore y Cloud Functions cuando se actualiza `main`. Antes de desplegar, ejecuta las pruebas de la aplicación y una validación de Firebase CLI. También se puede iniciar manualmente desde la pestaña Actions.
 
-Para habilitar el despliegue automático, crea una cuenta de servicio dedicada al despliegue en el proyecto `kotxea-urtxe` y guarda su JSON completo en GitHub → Settings → Secrets and variables → Actions, con el nombre `FIREBASE_SERVICE_ACCOUNT_KOTXEA_URTXE`. Además de Hosting, reglas e índices, la cuenta necesita `Cloud Functions Admin` (`roles/cloudfunctions.admin`) y `Service Account User` (`roles/iam.serviceAccountUser`) para desplegar la función. No pongas ese JSON en Git, en `firebase-config.js` ni en el código de la web.
+Para habilitar el despliegue automático, crea una cuenta de servicio dedicada al despliegue en el proyecto `kotxea-urtxe` y guarda su JSON completo en GitHub → Settings → Secrets and variables → Actions, con el nombre `FIREBASE_SERVICE_ACCOUNT_KOTXEA_URTXE`. Además de Hosting, reglas e índices, la cuenta necesita `Cloud Functions Admin` (`roles/cloudfunctions.admin`) y `Service Account User` (`roles/iam.serviceAccountUser`) sobre la cuenta de ejecución `firebase-adminsdk-fbsvc@kotxea-urtxe.iam.gserviceaccount.com`. No pongas ese JSON en Git, en `firebase-config.js` ni en el código de la web.
 
 Cloud Functions requiere que el proyecto Firebase use el plan Blaze con una cuenta de facturación vinculada. La función `listAuthUsers` no reserva instancias; aun así, configura alertas de presupuesto en Google Cloud antes de usar servicios de pago.
 
