@@ -136,7 +136,7 @@
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (typeof document === 'undefined') return;
 
-    let state = null; let readOnly = false; let snapshot = null; let storage; let editingTripIds = [];
+    let state = null; let readOnly = false; let snapshot = null; let storage; let editingTripIds = []; let historyCalendarMonth = new Date();
     try { storage = root.localStorage; } catch (_) { storage = null; }
     function el(id) { return document.getElementById(id); }
     function canManageGroup() { return Boolean(root.KotxeaCloud && root.KotxeaCloud.canManageGroup()); }
@@ -166,17 +166,18 @@
     function renderLatestTrip() {
         const target = el('latestTripNote');
         if (!target) return;
-        const datedTrips = state.trips.some(trip => trip.createdAt)
-            ? state.trips.filter(trip => trip.createdAt)
-            : state.trips;
-        const latest = datedTrips.slice().sort((a, b) => (b.createdAt || Date.parse(b.date + 'T00:00:00')) - (a.createdAt || Date.parse(a.date + 'T00:00:00')) || b.date.localeCompare(a.date))[0];
-        target.hidden = !latest;
-        if (!latest) return;
-        const months = ['urtarrilaren', 'otsailaren', 'martxoaren', 'apirilaren', 'maiatzaren', 'ekainaren', 'uztailaren', 'abuztuaren', 'irailaren', 'urriaren', 'azaroaren', 'abenduaren'];
-        const tripDate = new Date(latest.date + 'T00:00:00');
-        const dateLabel = months[tripDate.getMonth()] + ' ' + tripDate.getDate() + 'ko';
-        const author = latest.createdByName || 'Taldeko kide batek';
-        target.textContent = author + 'k ' + dateLabel + ' bidaia apuntatu du.';
+        const latestDate = state.trips.reduce((latest, trip) => trip.date > latest ? trip.date : latest, '');
+        const latestTrips = state.trips.filter(trip => trip.date === latestDate);
+        target.hidden = latestTrips.length === 0;
+        if (!latestTrips.length) return;
+        const dateLabel = new Date(latestDate + 'T00:00:00').toLocaleDateString('eu-ES');
+        const people = peopleMap(state.people);
+        const records = latestTrips.map(trip => {
+            const driver = people.get(trip.driver)?.name || trip.driver;
+            const passengers = trip.passengers.map(id => people.get(id)?.name || id).join(', ');
+            return driver + ': ' + passengers;
+        }).join(' · ');
+        target.textContent = 'Azken bidaia eguna: ' + dateLabel + ' · ' + latestTrips.length + ' bidaia: ' + records;
     }
     function renderSummary() {
         if (!state) return;
@@ -300,6 +301,7 @@
         const custom = period === 'custom';
         el('historyDateRange').hidden = !custom;
         const invalidRange = custom && ((from && !validDate(from)) || (to && !validDate(to)) || (from && to && from > to));
+        renderHistoryCalendar();
         const cutoff = new Date();
         cutoff.setHours(0, 0, 0, 0);
         cutoff.setDate(cutoff.getDate() - 30);
@@ -340,6 +342,59 @@
                 actionCell.append(button);
             });
         });
+    }
+    function renderHistoryCalendar() {
+        const days = el('historyCalendarDays');
+        const title = el('historyCalendarTitle');
+        if (!days || !title || !state) return;
+        days.replaceChildren();
+        const year = historyCalendarMonth.getFullYear();
+        const month = historyCalendarMonth.getMonth();
+        title.textContent = historyCalendarMonth.toLocaleDateString('eu-ES', { month: 'long', year: 'numeric' });
+        const person = el('historyPerson').value;
+        const tripsByDate = new Map();
+        state.trips.forEach(trip => {
+            if (person && !trip.passengers.includes(person)) return;
+            tripsByDate.set(trip.date, (tripsByDate.get(trip.date) || 0) + 1);
+        });
+        const period = el('historialEpea').value;
+        const from = el('historyFrom').value;
+        const to = el('historyTo').value;
+        const selectedDate = period === 'custom' && from && from === to ? from : '';
+        const offset = (new Date(year, month, 1).getDay() + 6) % 7;
+        for (let i = 0; i < offset; i++) {
+            const spacer = document.createElement('span');
+            spacer.className = 'history-calendar-spacer';
+            spacer.setAttribute('aria-hidden', 'true');
+            days.append(spacer);
+        }
+        const monthLength = new Date(year, month + 1, 0).getDate();
+        for (let day = 1; day <= monthLength; day++) {
+            const date = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+            const count = tripsByDate.get(date) || 0;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'history-calendar-day' + (count ? ' has-trips' : '') + (date === selectedDate ? ' is-selected' : '');
+            button.setAttribute('aria-pressed', String(date === selectedDate));
+            button.setAttribute('aria-label', new Date(year, month, day).toLocaleDateString('eu-ES', { dateStyle: 'full' }) + (count ? ': ' + count + ' bidaia-erregistro' : ': bidaia-erregistrorik ez'));
+            const dayNumber = document.createElement('span');
+            dayNumber.textContent = String(day);
+            button.append(dayNumber);
+            if (count) {
+                const badge = document.createElement('span');
+                badge.className = 'history-calendar-count';
+                badge.textContent = String(count);
+                badge.setAttribute('aria-hidden', 'true');
+                button.append(badge);
+            }
+            button.addEventListener('click', () => {
+                el('historialEpea').value = 'custom';
+                el('historyFrom').value = date;
+                el('historyTo').value = date;
+                renderHistory();
+            });
+            days.append(button);
+        }
     }
     function renderOpeningBalances() {
         const container = el('openingBalances'); container.replaceChildren();
@@ -500,6 +555,8 @@
         el('historialEpea').addEventListener('change', renderHistory);
         el('historyPerson').addEventListener('change', renderHistory);
         ['historyFrom', 'historyTo'].forEach(id => el(id).addEventListener('input', renderHistory));
+        el('historyMonthPrev').addEventListener('click', () => { historyCalendarMonth = new Date(historyCalendarMonth.getFullYear(), historyCalendarMonth.getMonth() - 1, 1); renderHistoryCalendar(); });
+        el('historyMonthNext').addEventListener('click', () => { historyCalendarMonth = new Date(historyCalendarMonth.getFullYear(), historyCalendarMonth.getMonth() + 1, 1); renderHistoryCalendar(); });
         el('clearHistoryFilters').addEventListener('click', () => {
             el('historialEpea').value = 'guztia';
             el('historyPerson').value = '';
