@@ -51,6 +51,11 @@ async function startCloud(role, canParticipate = false, userAgent = '') {
     const auth = { onAuthStateChanged(callback) { onAuthChanged = callback; } };
     const db = {
         collection: name => reference(name), async enablePersistence() {},
+        async runTransaction(callback) {
+            const batch = this.batch();
+            await callback({ get: ref => ref.get(), set: batch.set, update: batch.update });
+            await batch.commit();
+        },
         batch() {
             const writes = [];
             return {
@@ -63,7 +68,7 @@ async function startCloud(role, canParticipate = false, userAgent = '') {
             };
         }
     };
-    const firestore = Object.assign(() => db, { FieldValue: { serverTimestamp: () => new Date() } });
+    const firestore = Object.assign(() => db, { FieldValue: { serverTimestamp: () => new Date() }, Timestamp: { fromDate: date => date } });
     const context = {
         console,
         document: { getElementById: id => elements.get(id) || null, querySelector: () => nav, querySelectorAll: () => [], createElement: () => ({ append() {}, addEventListener() {} }), visibilityState: 'visible', addEventListener() {} },
@@ -152,6 +157,64 @@ test('native group form validation reports the field that needs attention', asyn
     const { elements } = await startCloud(null);
     elements.get('createGroupForm').listeners.invalid({ target: { id: 'newGroupName' } });
     assert.match(elements.get('createGroupFeedback').textContent, /Idatzi taldearen izena/);
+});
+
+async function openTestGroup() {
+    const result = await startCloud(null);
+    result.elements.get('newGroupName').value = 'Donostia - Arrasate';
+    result.elements.get('newGroupParticipantName').value = 'Nerea';
+    await result.elements.get('createGroupForm').listeners.submit({ preventDefault() {} });
+    return result;
+}
+
+test('a fresh group invites a new traveller by name and email without a manual person form', async () => {
+    const { elements, documents, cloud } = await openTestGroup();
+    assert.equal(elements.has('personForm'), false);
+    assert.equal(elements.has('restoreDefaultsBtn'), false);
+    assert.equal(elements.get('inviteName').required, true);
+    elements.get('inviteEmail').value = 'mikel@example.com';
+    elements.get('inviteName').value = 'Mikel';
+    await elements.get('inviteForm').listeners.submit({ preventDefault() {} });
+    const invite = [...documents].find(([key]) => key.startsWith('invitations/'))?.[1];
+    assert.ok(invite, elements.get('inviteFeedback').textContent);
+    assert.equal(invite.email, 'mikel@example.com');
+    assert.equal(invite.personName, 'Mikel');
+    assert.equal(invite.status, 'pending');
+    const person = documents.get('groups/' + cloud.currentGroup().id + '/people/' + invite.personId);
+    assert.equal(person.name, 'Mikel');
+    assert.equal(person.linkedUid, undefined);
+    assert.equal(elements.get('createInviteBtn').disabled, false);
+
+    const opening = { gidatu: 2, bidaiak_guztira: 3, bidaiak_portzentaia: 1 };
+    person.opening = opening;
+    elements.get('invitePerson').value = invite.personId;
+    elements.get('inviteName').value = '';
+    elements.get('invitePerson').onchange();
+    assert.equal(elements.get('inviteName').required, false);
+    await elements.get('inviteForm').listeners.submit({ preventDefault() {} });
+    assert.equal(person.opening, opening);
+    assert.equal([...documents].filter(([key]) => key.startsWith('invitations/')).length, 2);
+});
+
+test('a stale invitation leaves no orphan traveller and an admin invite ignores the selected traveller', async () => {
+    const { elements, documents, cloud } = await openTestGroup();
+    const group = cloud.currentGroup();
+    documents.get('groups/' + group.id).revision += 1;
+    elements.get('inviteEmail').value = 'new@example.com';
+    elements.get('inviteName').value = 'New traveller';
+    await elements.get('inviteForm').listeners.submit({ preventDefault() {} });
+    assert.equal([...documents].filter(([key]) => key.startsWith('invitations/')).length, 0);
+    assert.equal([...documents].filter(([key]) => key.startsWith('groups/' + group.id + '/people/')).length, 1);
+    assert.match(elements.get('inviteFeedback').textContent, /Ezin izan da/);
+
+    elements.get('inviteRole').value = 'admin';
+    elements.get('invitePerson').value = cloud.currentMember().personId;
+    elements.get('inviteRole').onchange();
+    assert.equal(elements.get('inviteName').required, false);
+    await elements.get('inviteForm').listeners.submit({ preventDefault() {} });
+    const invite = [...documents].find(([key]) => key.startsWith('invitations/'))?.[1];
+    assert.equal(invite.role, 'admin');
+    assert.equal(invite.personId, null);
 });
 
 test('a global administrator marked as a participant can create and join groups', async () => {

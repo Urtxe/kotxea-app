@@ -107,6 +107,49 @@ test('an unverified account cannot create a group', async () => {
     await assertFails(createGroupBatch(db, uid));
 });
 
+test('an owner can create a traveller with an invitation atomically and only its verified recipient can accept', async () => {
+    const owner = 'inviting-owner';
+    const recipient = 'invited-traveller';
+    await seedAccount(owner, null);
+    await seedAccount(recipient, null);
+    const ownerDb = testEnv.authenticatedContext(owner, { email: `${owner}@example.com`, email_verified: true }).firestore();
+    const recipientDb = testEnv.authenticatedContext(recipient, { email: `${recipient}@example.com`, email_verified: true }).firestore();
+    const strangerDb = testEnv.authenticatedContext('stranger', { email: 'stranger@example.com', email_verified: true }).firestore();
+    await createGroupBatch(ownerDb, owner);
+    await updateDoc(doc(ownerDb, 'groups/group-1'), { status: 'active' });
+    const invitation = {
+        groupId: 'group-1', groupName: 'Kotxea', email: `${recipient}@example.com`,
+        personId: 'invited-person', personName: 'Invited', role: 'member', status: 'pending', createdBy: owner,
+        createdAt: serverTimestamp(), expiresAt: new Date(Date.now() + 86400000)
+    };
+    const create = writeBatch(ownerDb);
+    create.set(doc(ownerDb, 'groups/group-1/people/invited-person'), {
+        id: 'invited-person', name: 'Invited', active: true, createdBy: owner,
+        opening: { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0 }
+    });
+    create.set(doc(ownerDb, 'invitations/new-invite'), invitation);
+    create.update(doc(ownerDb, 'groups/group-1'), { revision: increment(1), updatedAt: serverTimestamp() });
+    await assertSucceeds(create.commit());
+    await assertFails(setDoc(doc(strangerDb, 'invitations/forbidden'), { ...invitation, createdBy: 'stranger' }));
+    await assertFails(setDoc(doc(ownerDb, 'invitations/linked'), { ...invitation, personId: 'creator-person' }));
+    await assertFails(setDoc(doc(ownerDb, 'invitations/missing'), { ...invitation, personId: 'missing' }));
+    await assertFails(getDoc(doc(strangerDb, 'invitations/new-invite')));
+    await assertSucceeds(getDoc(doc(recipientDb, 'invitations/new-invite')));
+
+    const accept = writeBatch(recipientDb);
+    accept.update(doc(recipientDb, 'invitations/new-invite'), { status: 'accepted', acceptedBy: recipient, acceptedAt: serverTimestamp() });
+    accept.set(doc(recipientDb, 'groups/group-1/members', recipient), {
+        uid: recipient, role: 'member', personId: 'invited-person', inviteId: 'new-invite',
+        email: `${recipient}@example.com`, displayName: 'Invited', joinedAt: serverTimestamp()
+    });
+    accept.update(doc(recipientDb, 'groups/group-1/people/invited-person'), { linkedUid: recipient });
+    accept.set(doc(recipientDb, 'users', recipient, 'groups/group-1'), { groupId: 'group-1', groupName: 'Kotxea', role: 'member', joinedAt: serverTimestamp() });
+    await assertSucceeds(accept.commit());
+    const person = await getDoc(doc(recipientDb, 'groups/group-1/people/invited-person'));
+    assert.equal(person.data().linkedUid, recipient);
+    assert.equal(person.data().opening.gidatu, 0);
+});
+
 test('the global superadmin cannot create a participant group for himself', async () => {
     const uid = 'global-admin';
     await seedAccount(uid, 'superadmin');
