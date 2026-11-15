@@ -83,6 +83,7 @@ main { padding: 24px 16px; }
 .screen-heading .eyebrow { color: var(--acento); }
 .screen-heading h2 { font-size: 1.4rem; }
 .screen-intro { margin: 0 0 20px; color: var(--tinta-suave); font-size: .9rem; }
+.latest-trip-note { width: fit-content; max-width: 100%; margin: -8px 0 16px; padding: 9px 13px; border: 1px solid var(--borde); border-radius: 12px; background: var(--panel); color: var(--tinta-suave); font-size: .82rem; box-shadow: var(--sombra); overflow-wrap: anywhere; }
 #appStatus:empty { display: none; }
 #appStatus:not(:empty), #startupWarning { margin: 0 0 20px; border: 1px solid var(--borde); border-left: 3px solid var(--verde-laboral); border-radius: 10px; background: var(--panel); padding: 12px; font-size: .88rem; box-shadow: var(--sombra); overflow-wrap: anywhere; }
 

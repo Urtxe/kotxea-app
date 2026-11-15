@@ -15,6 +15,8 @@
     let activeMember = null;
     let revision = 0;
     let groupUnsubscribe = null;
+    let tripSyncUnsubscribe = null;
+    let pendingTripWrites = false;
     let adminPresenceUnsubscribe = null;
     let adminPresenceRefreshTimer = null;
     let presenceHeartbeat = null;
@@ -23,6 +25,7 @@
     let appStateCallback = null;
     let statusCallback = null;
     let saving = false;
+    let persistenceEnabled = false;
     let registrationMode = false;
     let deferredInstallPrompt = null;
     let adminUsers = [];
@@ -95,6 +98,10 @@
     function authActionSettings() { return { url: root.location.href, handleCodeInApp: false }; }
     function groupReference(groupId) { return db.collection('groups').doc(groupId); }
     function safeDocId(id) { return encodeURIComponent(String(id)); }
+    function tripAuthorName(trip, state) {
+        const linkedPerson = state.people.find(person => person.linkedUid === user.uid);
+        return linkedPerson ? linkedPerson.name : null;
+    }
     function personDocument(person, opening, old) {
         const document = {
             id: person.id,
@@ -112,7 +119,7 @@
         const people = [];
         const opening = Object.create(null);
         peopleSnapshot.forEach(doc => {
-            const data = doc.data();
+            const data = doc.data({ serverTimestamps: 'estimate' });
             if (!data || typeof data.id !== 'string') return;
             const person = { id: data.id, name: data.name, active: data.active !== false };
             if (data.default) person.default = true;
@@ -122,9 +129,11 @@
         });
         const trips = [];
         tripsSnapshot.forEach(doc => {
-            const data = doc.data();
+            const data = doc.data({ serverTimestamps: 'estimate' });
             if (!data || typeof data.id !== 'string') return;
-            trips.push({ id: data.id, date: data.date, driver: data.driver, passengers: data.passengers, ...(data.createdBy ? { createdBy: data.createdBy } : {}) });
+            const creator = data.createdBy ? people.find(person => person.linkedUid === data.createdBy) : null;
+            const createdAt = data.createdAt && typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate().getTime() : null;
+            trips.push({ id: data.id, date: data.date, driver: data.driver, passengers: data.passengers, ...(data.createdBy ? { createdBy: data.createdBy } : {}), ...(data.createdByName ? { createdByName: data.createdByName } : creator ? { createdByName: creator.name } : {}), ...(createdAt ? { createdAt } : {}) });
         });
         trips.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
         return { version: api.VERSION, people, trips, opening };
@@ -136,7 +145,7 @@
             operations.push({ ref: groupRef.collection('people').doc(safeDocId(person.id)), data: personDocument(person, state.opening[person.id]) });
         });
         state.trips.forEach(trip => {
-            operations.push({ ref: groupRef.collection('trips').doc(safeDocId(trip.id)), data: { id: trip.id, date: trip.date, driver: trip.driver, passengers: trip.passengers, createdBy: user.uid, updatedBy: user.uid } });
+            operations.push({ ref: groupRef.collection('trips').doc(safeDocId(trip.id)), data: { id: trip.id, date: trip.date, driver: trip.driver, passengers: trip.passengers, createdBy: user.uid, ...(tripAuthorName(trip, state) ? { createdByName: tripAuthorName(trip, state) } : {}), createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedBy: user.uid, updatedAt: firebase.firestore.FieldValue.serverTimestamp() } });
         });
         for (let offset = 0; offset < operations.length; offset += 400) {
             const batch = db.batch();
@@ -484,6 +493,8 @@
     async function openGroup(groupId) {
         if (!signedIn()) return;
         if (groupUnsubscribe) { groupUnsubscribe(); groupUnsubscribe = null; }
+        if (tripSyncUnsubscribe) { tripSyncUnsubscribe(); tripSyncUnsubscribe = null; }
+        pendingTripWrites = false;
         const selectedUser = user;
         const groupRef = groupReference(groupId);
         try {
@@ -519,12 +530,19 @@
             el('changeGroupNav').hidden = groupList.length < 2 && !isSuperAdmin();
             await loadActiveState();
             setGate('app');
+            showStatus(root.navigator.onLine === false ? 'Sin conexión. Los viajes nuevos se guardarán en este dispositivo y se sincronizarán al volver internet.' : '');
             if (groupUnsubscribe) groupUnsubscribe();
             groupUnsubscribe = groupRef.onSnapshot(snapshot => {
                 if (!snapshot.exists || !activeGroup || activeGroup.id !== groupId) return;
                 const newRevision = Number(snapshot.data().revision || 0);
                 if (newRevision !== revision && !saving) loadActiveState().catch(error => showStatus(safeError(error)));
             }, error => showStatus('Taldearen sinkronizazioa eten da: ' + safeError(error)));
+            tripSyncUnsubscribe = groupRef.collection('trips').onSnapshot({ includeMetadataChanges: true }, snapshot => {
+                const hasPending = snapshot.docs.some(doc => doc.metadata.hasPendingWrites);
+                if (hasPending) showStatus('Bidaiak gailuan gordeta daude; Firebase-rekin sinkronizatzen ari dira.');
+                else if (pendingTripWrites) showStatus('Bidaiak Firebase-rekin sinkronizatuta.');
+                pendingTripWrites = hasPending;
+            }, error => showStatus('Ezin izan da bidaien sinkronizazioa egiaztatu: ' + safeError(error)));
             await loadGroupManagement();
         } catch (error) {
             await refreshGroupsGate();
@@ -546,6 +564,14 @@
         el('groupDiscoverableToggle').checked = Boolean(groupData.discoverable);
     }
     function comparable(value) { return JSON.stringify(value); }
+    function onlyAddedTrips(previous, next) {
+        if (previous.people.length !== next.people.length || comparable(previous.opening) !== comparable(next.opening)) return false;
+        const nextPeople = new Map(next.people.map(person => [person.id, person]));
+        if (previous.people.some(person => comparable(person) !== comparable(nextPeople.get(person.id)))) return false;
+        const nextTrips = new Map(next.trips.map(trip => [trip.id, trip]));
+        return next.trips.length > previous.trips.length
+            && previous.trips.every(trip => comparable(trip) === comparable(nextTrips.get(trip.id)));
+    }
     async function persistState(previous, next) {
         if (!activeGroup || !user || !api.validateState(next)) return false;
         if (saving) { showStatus('Aurreko aldaketa gordetzen ari da; itxaron une batez.'); return false; }
@@ -556,6 +582,44 @@
         const newPeople = new Map(next.people.map(person => [person.id, person]));
         const oldTrips = new Map(previous.trips.map(trip => [trip.id, trip]));
         const newTrips = new Map(next.trips.map(trip => [trip.id, trip]));
+        if (onlyAddedTrips(previous, next)) {
+            if (root.navigator.onLine === false && !persistenceEnabled) {
+                showStatus('Ezin da bidaiarik gorde konexiorik gabe: gailu honetan Firestore-ren memoria iraunkorra ez dago erabilgarri.');
+                return false;
+            }
+            const additions = next.trips.filter(trip => !oldTrips.has(trip.id));
+            const batch = db.batch();
+            const groupRef = groupReference(targetGroupId);
+            additions.forEach(trip => batch.set(groupRef.collection('trips').doc(safeDocId(trip.id)), {
+                id: trip.id,
+                date: trip.date,
+                driver: trip.driver,
+                passengers: trip.passengers,
+                createdBy: targetUid,
+                ...(trip.createdByName || tripAuthorName(trip, next) ? { createdByName: trip.createdByName || tripAuthorName(trip, next) } : {}),
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedBy: targetUid,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }));
+            batch.update(groupRef, {
+                revision: firebase.firestore.FieldValue.increment(additions.length),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            revision += additions.length;
+            activeGroup.revision = revision;
+            const commit = batch.commit();
+            commit.then(() => {
+                if (activeGroup && activeGroup.id === targetGroupId && user && user.uid === targetUid) showStatus('Bidaia Firebase-rekin sinkronizatuta.');
+            }).catch(async error => {
+                console.error('Kotxea trip sync failed', error);
+                showStatus('Bidaia ezin izan da sinkronizatu: ' + safeError(error));
+                if (activeGroup && activeGroup.id === targetGroupId && user && user.uid === targetUid) {
+                    try { await loadActiveState(); } catch (_) {}
+                }
+            });
+            showStatus('Bidaia gailuan gorde da; Firebase-rekin sinkronizatzen ari da.');
+            return { pending: true };
+        }
         saving = true;
         try {
             await db.runTransaction(async transaction => {
@@ -588,6 +652,8 @@
                         transaction.set(groupRef.collection('trips').doc(safeDocId(id)), {
                             id: trip.id, date: trip.date, driver: trip.driver, passengers: trip.passengers,
                             createdBy: old && old.createdBy ? old.createdBy : targetUid,
+                            ...(!old && tripAuthorName(trip, next) ? { createdByName: tripAuthorName(trip, next) } : {}),
+                            ...(!old ? { createdAt: firebase.firestore.FieldValue.serverTimestamp() } : {}),
                             updatedBy: targetUid,
                             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                         }, { merge: true });
@@ -1106,14 +1172,16 @@
         el('globalAdminNav').hidden = !platformRole;
         await refreshGroupsGate();
     }
-    async function signOut() { if (groupUnsubscribe) groupUnsubscribe(); groupUnsubscribe = null; activeGroup = null; activeMember = null; platformRole = null; platformCanParticipate = false; await auth.signOut(); }
+    async function signOut() { if (groupUnsubscribe) groupUnsubscribe(); groupUnsubscribe = null; if (tripSyncUnsubscribe) tripSyncUnsubscribe(); tripSyncUnsubscribe = null; activeGroup = null; activeMember = null; platformRole = null; platformCanParticipate = false; await auth.signOut(); }
     async function start(options) {
         appStateCallback = options && options.onState;
         statusCallback = options && options.onStatus;
         if (!root.firebase || !root.KOTXEA_FIREBASE_CONFIG) { setGate('authPanel'); updateAuthFeedback('Firebase konfigurazioa ezin izan da kargatu.'); return; }
         if (!firebase.apps.length) firebase.initializeApp(root.KOTXEA_FIREBASE_CONFIG);
         auth = firebase.auth(); db = firebase.firestore();
-        try { await db.enablePersistence({ synchronizeTabs: true }); } catch (error) { if (!error || error.code !== 'failed-precondition') console.warn('Firestore offline cache disabled:', error && error.code); }
+        root.addEventListener('offline', () => { if (activeGroup) showStatus('Sin conexión. Los viajes nuevos se guardarán en este dispositivo y se sincronizarán al volver internet.'); });
+        root.addEventListener('online', () => { if (activeGroup) showStatus('Conexión recuperada; Firestore está sincronizando los viajes guardados en el dispositivo.'); });
+        try { await db.enablePersistence({ synchronizeTabs: true }); persistenceEnabled = true; } catch (error) { if (!error || error.code !== 'failed-precondition') console.warn('Firestore offline cache disabled:', error && error.code); }
         auth.onAuthStateChanged(async authUser => {
             user = authUser;
             if (!authUser) { platformRole = null; platformCanParticipate = false; await loadProfileAndGate(); return; }

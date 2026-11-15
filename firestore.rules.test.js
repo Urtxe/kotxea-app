@@ -7,7 +7,7 @@ const {
     assertSucceeds,
     initializeTestEnvironment
 } = require('@firebase/rules-unit-testing');
-const { collection, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc, writeBatch } = require('firebase/firestore');
+const { collection, doc, getDoc, getDocs, increment, serverTimestamp, setDoc, updateDoc, writeBatch } = require('firebase/firestore');
 
 const projectId = 'demo-kotxea';
 const rules = fs.readFileSync(path.join(__dirname, 'firestore.rules'), 'utf8');
@@ -100,6 +100,30 @@ test('a participating global administrator can create a group', async () => {
     }).firestore();
 
     await assertSucceeds(createGroupBatch(db, uid));
+});
+
+test('a group member can queue a trip and increment the group revision atomically', async () => {
+    const uid = 'trip-member';
+    await seedAccount(uid, null);
+    await testEnv.withSecurityRulesDisabled(async context => {
+        const db = context.firestore();
+        await setDoc(doc(db, 'groups/group-1'), {
+            name: 'Kotxea', ownerUid: uid, createdBy: uid, status: 'active', revision: 0
+        });
+        await setDoc(doc(db, 'groups/group-1/members', uid), { uid, role: 'owner', personId: 'person-1' });
+        await setDoc(doc(db, 'groups/group-1/people/person-1'), { id: 'person-1', name: 'Nerea', active: true, linkedUid: uid });
+    });
+    const db = testEnv.authenticatedContext(uid, {
+        email: `${uid}@example.com`, email_verified: true
+    }).firestore();
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'groups/group-1/trips/trip-1'), {
+        id: 'trip-1', date: '2026-08-23', driver: 'person-1', passengers: ['person-1'],
+        createdBy: uid, createdByName: 'Nerea', createdAt: serverTimestamp(), updatedBy: uid, updatedAt: serverTimestamp()
+    });
+    batch.update(doc(db, 'groups/group-1'), { revision: increment(1), updatedAt: serverTimestamp() });
+
+    await assertSucceeds(batch.commit());
 });
 
 test('the global superadmin can grant global administration to another account but not himself', async () => {

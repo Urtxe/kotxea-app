@@ -163,8 +163,24 @@
         const rounded = Number(value.toFixed(2));
         return rounded.toLocaleString('eu-ES', { maximumFractionDigits: 2, signDisplay: 'exceptZero' });
     }
+    function renderLatestTrip() {
+        const target = el('latestTripNote');
+        if (!target) return;
+        const datedTrips = state.trips.some(trip => trip.createdAt)
+            ? state.trips.filter(trip => trip.createdAt)
+            : state.trips;
+        const latest = datedTrips.slice().sort((a, b) => (b.createdAt || Date.parse(b.date + 'T00:00:00')) - (a.createdAt || Date.parse(a.date + 'T00:00:00')) || b.date.localeCompare(a.date))[0];
+        target.hidden = !latest;
+        if (!latest) return;
+        const months = ['urtarrilaren', 'otsailaren', 'martxoaren', 'apirilaren', 'maiatzaren', 'ekainaren', 'uztailaren', 'abuztuaren', 'irailaren', 'urriaren', 'azaroaren', 'abenduaren'];
+        const tripDate = new Date(latest.date + 'T00:00:00');
+        const dateLabel = months[tripDate.getMonth()] + ' ' + tripDate.getDate() + 'ko';
+        const author = latest.createdByName || 'Taldeko kide batek';
+        target.textContent = author + 'k ' + dateLabel + ' bidaia apuntatu du.';
+    }
     function renderSummary() {
         if (!state) return;
+        renderLatestTrip();
         const summary = calculateSummary(state);
         const balances = el('balanceList');
         const group = el('groupList');
@@ -358,9 +374,21 @@
             const groupId = root.KotxeaCloud.currentGroup().id;
             const previousTripIds = new Set(previous.trips.map(trip => trip.id));
             const uid = root.KotxeaCloud.currentUser()?.uid;
-            nextState.trips.forEach(trip => { if (!previousTripIds.has(trip.id) && uid) trip.createdBy = uid; });
+            const member = root.KotxeaCloud.currentMember();
+            const authorPerson = member && member.personId ? nextState.people.find(person => person.id === member.personId) : nextState.people.find(person => person.linkedUid === uid);
+            nextState.trips.forEach(trip => {
+                if (!previousTripIds.has(trip.id) && uid) {
+                    trip.createdBy = uid;
+                    if (authorPerson) trip.createdByName = authorPerson.name;
+                    trip.createdAt = Date.now();
+                }
+            });
             const saved = await root.KotxeaCloud.persistState(previous, nextState);
-            if (saved && root.KotxeaCloud.currentGroup()?.id === groupId) { state = nextState; renderAll(); setStatus('Aldaketak Firebase-n gordeta.'); return true; }
+            if (saved && root.KotxeaCloud.currentGroup()?.id === groupId) {
+                state = nextState; renderAll();
+                setStatus(saved.pending ? 'Bidaia gailuan gorde da; Firebase-rekin sinkronizatuko da konexioa dagoenean.' : 'Aldaketak Firebase-n gordeta.');
+                return saved;
+            }
             return false;
         }
         setStatus('Aukeratu talde bat datuak gordetzeko.');
@@ -380,8 +408,12 @@
     }
     function togglePerson(event) { if (readOnly || !canManageGroup()) return; const next = clone(state); const person = next.people.find(item => item.id === event.currentTarget.dataset.personId); if (!person) return; if (person.active) removePerson(next, person.id); else person.active = true; persist(next); }
     let tripSavedTimer;
-    function showTripSaved() {
+    function showTripSaved(pending = false) {
         const dialog = el('tripSavedDialog');
+        el('tripSavedTitle').textContent = pending ? 'Bidaia gailuan gordeta' : 'Bidaia gordeta!';
+        el('tripSavedMessage').textContent = pending
+            ? 'Bidaia gailuan gorde da. Internetera konektatzean Firebase-rekin sinkronizatuko da.'
+            : 'Bidaia ondo gorde da.';
         clearTimeout(tripSavedTimer);
         if (!dialog.open) dialog.showModal();
         tripSavedTimer = setTimeout(() => { if (dialog.open) dialog.close(); }, 2000);
@@ -390,7 +422,7 @@
         event.preventDefault(); if (readOnly) return; const date = el('bidaiaData').value; const driver = el('nor').value; const passengers = [...document.querySelectorAll('input[name="bidaiariak"]:checked')].map(input => input.value);
         const editId = tripIdField()?.value; if (!validDate(date)) { alert('Hautatu baliozko data bat.'); return; } if (passengers.length > 8) { alert('Gehienez 8 pertsona erregistra daitezke auto berean.'); return; } if (!driver || passengers.length === 0 || !passengers.includes(driver)) { alert('Gidaria bidaiarien artean hautatu behar duzu.'); return; }
         const next = clone(state); if (editId) { const trip = next.trips.find(item => String(item.id) === String(editId)); if (!trip) return; trip.date = date; trip.driver = driver; trip.passengers = passengers; } else next.trips.push({ id: makeId(), date, driver, passengers });
-        persist(next).then(saved => { if (saved) { resetTripForm(); showTripSaved(); } });
+        persist(next).then(saved => { if (saved) { resetTripForm(); showTripSaved(Boolean(saved.pending)); } });
     }
     function editTrip(event, repeat = false) {
         const trip = state.trips.find(item => item.id === event.currentTarget.dataset.id);

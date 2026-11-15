@@ -29,6 +29,10 @@ service cloud.firestore {
           && get(groupPath(groupId)).data.createdBy == request.auth.uid)
       );
     }
+    function isOwnTripAuthorName(groupId, name) {
+      return isMember(groupId)
+        && get(/databases/$(database)/documents/groups/$(groupId)/people/$(get(memberPath(groupId, request.auth.uid)).data.personId)).data.name == name;
+    }
 
     match /platformRoles/{uid} {
       allow get: if signedIn() && (request.auth.uid == uid || isSuperAdmin());
@@ -207,8 +211,10 @@ service cloud.firestore {
           && request.resource.data.passengers.hasAny([request.resource.data.driver])
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.updatedBy == request.auth.uid
+          && (!('createdByName' in request.resource.data) || request.resource.data.createdByName is string && request.resource.data.createdByName.size() <= 120 && isOwnTripAuthorName(groupId, request.resource.data.createdByName))
+          && (!('createdAt' in request.resource.data) || request.resource.data.createdAt is timestamp)
           && (!('leg' in request.resource.data) || request.resource.data.leg == null || request.resource.data.leg in ['ida', 'vuelta'])
-          && request.resource.data.keys().hasOnly(['id', 'date', 'driver', 'passengers', 'leg', 'createdBy', 'updatedBy', 'updatedAt']);
+          && request.resource.data.keys().hasOnly(['id', 'date', 'driver', 'passengers', 'leg', 'createdBy', 'createdByName', 'createdAt', 'updatedBy', 'updatedAt']);
         allow update: if validGroupState(groupId)
           && (isGroupAdmin(groupId) || resource.data.createdBy == request.auth.uid)
           && request.resource.data.id == resource.data.id
@@ -220,6 +226,7 @@ service cloud.firestore {
           && request.resource.data.passengers.size() > 0
           && request.resource.data.passengers.size() <= 8
           && request.resource.data.passengers.hasAny([request.resource.data.driver])
+          && (!('createdByName' in request.resource.data) || request.resource.data.createdByName is string && request.resource.data.createdByName.size() <= 120)
           && (!('leg' in request.resource.data) || request.resource.data.leg == null || request.resource.data.leg in ['ida', 'vuelta'])
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'driver', 'passengers', 'leg', 'updatedBy', 'updatedAt']);
         allow delete: if validGroupState(groupId) && (isGroupAdmin(groupId) || resource.data.createdBy == request.auth.uid);
