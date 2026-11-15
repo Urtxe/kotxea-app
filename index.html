@@ -13,7 +13,7 @@
             if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
         } catch (_) {}
     </script>
-    <link rel="stylesheet" href="styles.css?v=20">
+    <link rel="stylesheet" href="styles.css?v=21">
 </head>
 <body>
     <div class="app-shell">
@@ -34,6 +34,7 @@
     </header>
     <main>
         <p id="startupWarning" role="alert">Kotxea abiarazten…</p>
+        <p id="appStatus" role="status" aria-live="polite"></p>
         <section id="authPanel" class="gate-panel" aria-labelledby="authTitle" hidden>
             <div class="screen-heading"><p class="eyebrow">ONGI ETORRI</p><h2 id="authTitle">Sartu Kotxean</h2></div>
             <p class="screen-intro">Bidaiak eta taldeak zure kontuarekin sinkronizatuko dira gailu guztietan.</p>
@@ -115,7 +116,6 @@
         </section>
 
         <div id="appContent" hidden>
-        <p id="appStatus" role="status" aria-live="polite"></p>
         <section class="app-screen is-active" data-screen="summary" aria-labelledby="summaryTitle">
         <div class="screen-heading">
             <div><p class="eyebrow">ZURE TALDEA</p><h2 id="summaryTitle">Gidatze-balantzea</h2></div>
@@ -311,7 +311,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
     <script src="./firebase-config.js"></script>
-    <script src="./script.js?v=15"></script>
-    <script src="./cloud.js?v=18"></script>
+    <script src="./script.js?v=16"></script>
+    <script src="./cloud.js?v=19"></script>
 </body>
 </html>

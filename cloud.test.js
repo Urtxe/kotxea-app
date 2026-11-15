@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-async function startCloud(role, canParticipate = false, userAgent = '') {
+async function startCloud(role, canParticipate = false, userAgent = '', scenario = {}) {
     const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
     const elements = new Map();
     for (const [tag, id] of html.matchAll(/<[^>]*\bid="([^"]+)"[^>]*>/g)) {
@@ -17,8 +17,9 @@ async function startCloud(role, canParticipate = false, userAgent = '') {
             focus() { this.focused = true; },
             scrollIntoView() {},
             closest() { return this; },
-            replaceChildren() {},
-            append() {}, add() {}, reset() {},
+            children: [],
+            replaceChildren(...children) { this.children = children; },
+            append(...children) { this.children.push(...children); }, add() {}, reset() {},
             querySelector() { return this.submitButton || (this.submitButton = { disabled: false }); }
         });
     }
@@ -26,7 +27,7 @@ async function startCloud(role, canParticipate = false, userAgent = '') {
     const presenceWrites = [];
     let verifiedToken = false;
     let tokenRefreshes = 0;
-    const documents = new Map();
+    const documents = new Map(scenario.documents || []);
     let nextId = 0;
     const reference = (refPath) => ({
         path: refPath,
@@ -48,7 +49,7 @@ async function startCloud(role, canParticipate = false, userAgent = '') {
     });
     let onAuthChanged;
     const rootListeners = {};
-    const auth = { onAuthStateChanged(callback) { onAuthChanged = callback; } };
+    const auth = { onAuthStateChanged(callback) { onAuthChanged = callback; }, async signOut() { if (scenario.signOutError) throw scenario.signOutError; await onAuthChanged(null); } };
     const db = {
         collection: name => reference(name), async enablePersistence() {},
         async runTransaction(callback) {
@@ -71,11 +72,12 @@ async function startCloud(role, canParticipate = false, userAgent = '') {
     const firestore = Object.assign(() => db, { FieldValue: { serverTimestamp: () => new Date() }, Timestamp: { fromDate: date => date } });
     const context = {
         console,
-        document: { getElementById: id => elements.get(id) || null, querySelector: () => nav, querySelectorAll: () => [], createElement: () => ({ append() {}, addEventListener() {} }), visibilityState: 'visible', addEventListener() {} },
+        document: { getElementById: id => elements.get(id) || null, querySelector: () => nav, querySelectorAll: () => [], createElement: tagName => ({ tagName, children: [], listeners: {}, append(...children) { this.children.push(...children); }, addEventListener(type, callback) { this.listeners[type] = callback; }, setAttribute() {} }), visibilityState: 'visible', addEventListener() {} },
         firebase: { apps: [{}], auth: () => auth, firestore },
         KOTXEA_FIREBASE_CONFIG: {},
         localStorage: { length: 0, getItem() { return null; }, setItem() {}, removeItem() {} },
-        navigator: { userAgent, platform: '', maxTouchPoints: 0 }, location: { protocol: 'https:', href: 'https://example.com/' },
+        navigator: { userAgent, platform: '', maxTouchPoints: 0 }, location: { protocol: 'https:', href: scenario.href || 'https://example.com/', pathname: '/' },
+        history: { replaceState() { context.location.href = 'https://example.com/'; } },
         matchMedia: () => ({ matches: false }), addEventListener(event, listener) { rootListeners[event] = listener; },
         setInterval() { return 1; }, clearInterval() {}, setTimeout(callback) { callback(); }, URL,
         Option: function (label, value) { this.label = label; this.value = value; }
@@ -221,6 +223,62 @@ test('a global administrator marked as a participant can create and join groups'
     const { elements } = await startCloud('superadmin', true);
     assert.equal(elements.get('createGroupDetails').hidden, false);
     assert.equal(elements.get('groupSearchPanel').hidden, false);
+});
+
+function inviteScenario() {
+    return {
+        href: 'https://example.com/?invite=test-invite',
+        documents: [
+            ['groups/invited-group', { name: 'Invited group', status: 'active', revision: 0 }],
+            ['groups/invited-group/people/invitee', { id: 'invitee', name: 'Invitee', active: true }],
+            ['invitations/test-invite', { email: 'user@example.com', groupId: 'invited-group', groupName: 'Invited group', personId: 'invitee', personName: 'Invitee', role: 'member', status: 'pending', expiresAt: { toDate: () => new Date(Date.now() + 86400000) } }]
+        ]
+    };
+}
+
+test('a global administrator without participation sees an explanation and a disabled accept button', async () => {
+    const { elements } = await startCloud('superadmin', false, '', inviteScenario());
+    const item = elements.get('myInvitesList').children[0];
+    assert.equal(item.children.find(child => child.tagName === 'button').disabled, true);
+    assert.ok(item.children.some(child => child.textContent?.includes('ez du taldeetan parte hartzeko baimenik')));
+});
+
+test('the invitation accept event links the account and opens its group', async () => {
+    const { elements, documents, cloud } = await startCloud(null, false, '', inviteScenario());
+    const button = elements.get('myInvitesList').children[0].children.find(child => child.tagName === 'button');
+    await button.listeners.click();
+    assert.equal(documents.get('invitations/test-invite').status, 'accepted');
+    assert.equal(documents.get('groups/invited-group/people/invitee').linkedUid, 'test-user');
+    assert.equal(cloud.currentGroup()?.id, 'invited-group', elements.get('groupsFeedback').textContent);
+    assert.equal(elements.get('appContent').hidden, false);
+    assert.equal(button.disabled, false);
+});
+
+test('the first join-request click creates its private index and displays visible feedback', async () => {
+    const group = { groupId: 'public-group', name: 'Public', status: 'active', discoverable: true };
+    const { elements, documents } = await startCloud(null, false, '', { documents: [['directoryGroups/public-group', group]] });
+    const button = elements.get('discoverableGroupsList').children[0].children.find(child => child.tagName === 'button');
+    await button.listeners.click();
+    assert.equal(documents.get('joinRequests/public-group_test-user').status, 'pending');
+    assert.equal(documents.get('users/test-user/requests/public-group_test-user').status, 'pending');
+    assert.match(elements.get('appStatus').textContent, /Eskaera bidalita/);
+    assert.equal(elements.get('appStatus').hidden, false);
+});
+
+test('a failed sign-out keeps the current session and displays its error', async () => {
+    const { elements, cloud } = await startCloud(null, false, '', { signOutError: new Error('Connection failed') });
+    await elements.get('signOutFromGroupsBtn').listeners.click();
+    assert.equal(cloud.currentUser().uid, 'test-user');
+    assert.match(elements.get('appStatus').textContent, /Ezin izan da saioa itxi/);
+    assert.equal(elements.get('groupsPanel').hidden, false);
+});
+
+test('a linked account is archived even without trips instead of deleting its person record', () => {
+    const api = require('./script.js');
+    const state = api.emptyState();
+    const person = state.people[0]; person.linkedUid = 'linked-user';
+    assert.equal(api.removePerson(state, person.id).archived, true);
+    assert.equal(state.people.find(item => item.id === person.id).linkedUid, 'linked-user');
 });
 
 test('a verified signed-in user publishes a presence heartbeat', async () => {

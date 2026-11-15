@@ -129,7 +129,7 @@
         const result = migrateLegacy(summaryRaw, historyRaw, stateRaw); if (result.state && !validateState(result.state)) return { error: 'Gordetako migrazioaren emaitza ez da baliozkoa.', raw: { stateRaw, summaryRaw, historyRaw } }; return result;
     }
     function addPerson(state, name) { const clean = String(name || '').trim(); if (!clean || clean.length > 80) return { error: 'Izena beharrezkoa da.' }; if (state.people.some(person => person.name.toLocaleLowerCase() === clean.toLocaleLowerCase())) return { error: 'Pertsona hori dagoeneko badago.' }; const person = { id: makeId(), name: clean, active: true, default: false }; state.people.push(person); state.opening[person.id] = emptyOpening(); return { person }; }
-    function removePerson(state, id) { const person = state.people.find(item => item.id === id); if (!person) return { error: 'Pertsona ez da aurkitu.' }; const opening = state.opening[id] || emptyOpening(); const used = state.trips.some(trip => trip.driver === id || trip.passengers.includes(id)) || opening.gidatu > 0 || opening.bidaiak_guztira > 0 || opening.bidaiak_portzentaia > 0 || (opening.balance ?? 0) !== 0; if (used) { person.active = false; return { archived: true }; } state.people = state.people.filter(item => item.id !== id); delete state.opening[id]; return { removed: true }; }
+    function removePerson(state, id) { const person = state.people.find(item => item.id === id); if (!person) return { error: 'Pertsona ez da aurkitu.' }; const opening = state.opening[id] || emptyOpening(); const used = Boolean(person.linkedUid) || state.trips.some(trip => trip.driver === id || trip.passengers.includes(id)) || opening.gidatu > 0 || opening.bidaiak_guztira > 0 || opening.bidaiak_portzentaia > 0 || (opening.balance ?? 0) !== 0; if (used) { person.active = false; return { archived: true }; } state.people = state.people.filter(item => item.id !== id); delete state.opening[id]; return { removed: true }; }
     function restoreDefaults(state) { DEFAULT_PEOPLE.forEach(defaultPerson => { const existing = state.people.find(person => person.id === defaultPerson.id || person.name.trim().toLocaleLowerCase() === defaultPerson.name.toLocaleLowerCase()); if (existing) existing.active = true; else { state.people.push(clone(defaultPerson)); state.opening[defaultPerson.id] = emptyOpening(); } }); }
 
     const api = { VERSION, STATE_KEY, SUMMARY_KEY, HISTORY_KEY, DEFAULT_PEOPLE, emptyState, validateState, validateImport: validateState, calculateSummary, suggestDrivers, parseStored, migrateLegacy, addPerson, removePerson, restoreDefaults, todayString, openingBalance, setOpeningBalances, resetTrips };
@@ -439,6 +439,7 @@
                     trip.createdAt = Date.now();
                 }
             });
+            setStatus('Aldaketak gordetzen…');
             const saved = await root.KotxeaCloud.persistState(previous, nextState);
             if (saved && root.KotxeaCloud.currentGroup()?.id === groupId) {
                 state = nextState; renderAll();

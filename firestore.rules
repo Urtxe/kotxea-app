@@ -131,7 +131,8 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
 
       match /members/{uid} {
-        allow get, list: if isSuperAdmin() || isGroupAdmin(groupId);
+        allow get: if signedIn() && request.auth.uid == uid || isSuperAdmin() || isGroupAdmin(groupId);
+        allow list: if isSuperAdmin() || isGroupAdmin(groupId);
         allow create: if verified() && uid == request.auth.uid && canCreateGroups()
             && !exists(deletedAccountPath(request.resource.data.uid))
             && getAfter(groupPath(groupId)).data.status == 'initializing'
@@ -141,6 +142,17 @@ service cloud.firestore {
             && request.resource.data.uid == uid
             && getAfter(/databases/$(database)/documents/groups/$(groupId)/people/$(request.resource.data.personId)).data.linkedUid == uid
             && getAfter(/databases/$(database)/documents/users/$(uid)/groups/$(groupId)).data.role == 'owner'
+          || verified() && isGroupAdmin(groupId)
+            && request.resource.data.uid == uid
+            && !exists(deletedAccountPath(uid))
+            && request.resource.data.role == 'member'
+            && request.resource.data.joinRequestId is string
+            && getAfter(/databases/$(database)/documents/joinRequests/$(request.resource.data.joinRequestId)).data.uid == uid
+            && getAfter(/databases/$(database)/documents/joinRequests/$(request.resource.data.joinRequestId)).data.groupId == groupId
+            && getAfter(/databases/$(database)/documents/joinRequests/$(request.resource.data.joinRequestId)).data.status == 'approved'
+            && getAfter(/databases/$(database)/documents/joinRequests/$(request.resource.data.joinRequestId)).data.personId == request.resource.data.personId
+            && getAfter(/databases/$(database)/documents/groups/$(groupId)/people/$(request.resource.data.personId)).data.linkedUid == uid
+            && getAfter(/databases/$(database)/documents/users/$(uid)/groups/$(groupId)).data.role == 'member'
           || verified() && canCreateGroups() && uid == request.auth.uid && request.resource.data.uid == uid
             && !exists(deletedAccountPath(request.resource.data.uid))
             && request.resource.data.role in ['member', 'admin']

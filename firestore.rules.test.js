@@ -148,6 +148,9 @@ test('an owner can create a traveller with an invitation atomically and only its
     const person = await getDoc(doc(recipientDb, 'groups/group-1/people/invited-person'));
     assert.equal(person.data().linkedUid, recipient);
     assert.equal(person.data().opening.gidatu, 0);
+    await assertSucceeds(getDoc(doc(recipientDb, 'groups/group-1/members', recipient)));
+    await assertFails(getDoc(doc(recipientDb, 'groups/group-1/members', owner)));
+    await assertFails(getDocs(collection(recipientDb, 'groups/group-1/members')));
 });
 
 test('the global superadmin cannot create a participant group for himself', async () => {
@@ -158,6 +161,37 @@ test('the global superadmin cannot create a participant group for himself', asyn
     }).firestore();
 
     await assertFails(createGroupBatch(db, uid));
+});
+
+test('a private request index supports first submission and only an administrator can approve membership', async () => {
+    const owner = 'request-owner'; const applicant = 'request-applicant';
+    await seedAccount(owner, null); await seedAccount(applicant, null);
+    const ownerDb = testEnv.authenticatedContext(owner, { email: `${owner}@example.com`, email_verified: true }).firestore();
+    const applicantDb = testEnv.authenticatedContext(applicant, { email: `${applicant}@example.com`, email_verified: true }).firestore();
+    await createGroupBatch(ownerDb, owner);
+    await updateDoc(doc(ownerDb, 'groups/group-1'), { status: 'active' });
+    await setDoc(doc(ownerDb, 'directoryGroups/group-1'), { groupId: 'group-1', name: 'Kotxea', discoverable: true, status: 'active', updatedAt: serverTimestamp() });
+    const requestId = 'group-1_' + applicant;
+    const request = { requestId, groupId: 'group-1', groupName: 'Kotxea', uid: applicant, email: `${applicant}@example.com`, displayName: 'Applicant', status: 'pending' };
+    await assertSucceeds(getDoc(doc(applicantDb, 'users', applicant, 'requests', requestId)));
+    const submit = writeBatch(applicantDb);
+    submit.set(doc(applicantDb, 'joinRequests', requestId), request);
+    submit.set(doc(applicantDb, 'users', applicant, 'requests', requestId), request);
+    await assertSucceeds(submit.commit());
+    const approve = db => {
+        const batch = writeBatch(db);
+        batch.set(doc(db, 'groups/group-1/people/applicant-person'), { id: 'applicant-person', name: 'Applicant', active: true, linkedUid: applicant });
+        batch.set(doc(db, 'groups/group-1/members', applicant), { uid: applicant, role: 'member', personId: 'applicant-person', joinRequestId: requestId });
+        batch.set(doc(db, 'users', applicant, 'groups/group-1'), { groupId: 'group-1', groupName: 'Kotxea', role: 'member' });
+        batch.update(doc(db, 'joinRequests', requestId), { status: 'approved', personId: 'applicant-person', reviewedBy: owner });
+        batch.update(doc(db, 'users', applicant, 'requests', requestId), { status: 'approved', personId: 'applicant-person' });
+        batch.update(doc(db, 'groups/group-1'), { revision: increment(1), updatedAt: serverTimestamp() });
+        return batch.commit();
+    };
+    await assertFails(approve(applicantDb));
+    await assertFails(setDoc(doc(ownerDb, 'groups/group-1/members/forged'), { uid: 'forged', role: 'member', personId: 'applicant-person', joinRequestId: requestId }));
+    await assertSucceeds(approve(ownerDb));
+    await assertSucceeds(getDoc(doc(applicantDb, 'groups/group-1/members', applicant)));
 });
 
 test('a participating global administrator can create a group', async () => {

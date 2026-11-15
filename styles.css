@@ -339,6 +339,11 @@ footer a { color: var(--acento); font-weight: bold; text-underline-offset: 3px; 
 .history-calendar-legend { margin: 10px 0 0; color: var(--tinta-suave); font-size: .74rem; }
 .history-calendar-legend span { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border: 1px solid rgba(123, 190, 49, .7); border-radius: 3px; background: rgba(123, 190, 49, .35); }
 .empty-state { padding: 20px; border: 1px solid var(--borde); border-radius: 16px; background: var(--panel); }
+.invitation-share { display: flex; align-items: stretch; gap: 10px; min-width: 0; }
+.invitation-share input { flex: 1; min-width: 0; margin: 0; font-family: monospace; font-size: .85rem; }
+.invitation-share button { flex: 0 0 auto; }
+.invitation-share-feedback:empty { display: none; }
+@media (max-width: 480px) { .invitation-share { flex-direction: column; } }
 @media (min-width: 640px) {
     .history-filters, .date-range { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .date-range, .history-filters button { grid-column: 1 / -1; }
