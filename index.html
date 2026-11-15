@@ -75,10 +75,10 @@
             <details id="groupSearchPanel" class="settings-panel">
                 <summary>Bilatu talde bat</summary>
                 <form id="groupSearchForm" class="gate-form">
-                    <div class="field"><label for="groupSearch">Taldearen izena</label><input id="groupSearch" maxlength="80" autocomplete="off"></div>
+                    <div class="field"><label for="groupSearch">Taldearen izena</label><input id="groupSearch" maxlength="80" autocomplete="off" aria-describedby="groupSearchHelp"><p id="groupSearchHelp" class="help">3 letratik aurrera, emaitzak idatzi ahala eguneratzen dira. Hutsik utzita, talde guztiak agertzen dira.</p></div>
                     <button type="submit" class="secondary-button">Bilatu</button>
                 </form>
-                <ul id="discoverableGroupsList" class="group-picker-list"></ul>
+                <ul id="discoverableGroupsList" class="group-picker-list" aria-live="polite"></ul>
             </details>
             <section id="pendingRequestsPanel" class="settings-panel" hidden><h3>Nire eskaerak</h3><ul id="myRequestsList" class="group-picker-list"></ul></section>
             <section id="emailInvitesPanel" class="settings-panel" hidden><h3>Gonbidapenak</h3><ul id="myInvitesList" class="group-picker-list"></ul></section>
@@ -312,6 +312,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
     <script src="./firebase-config.js"></script>
     <script src="./script.js?v=16"></script>
-    <script src="./cloud.js?v=19"></script>
+    <script src="./cloud.js?v=20"></script>
 </body>
 </html>
