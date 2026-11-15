@@ -29,6 +29,7 @@
     let registrationMode = false;
     let deferredInstallPrompt = null;
     let adminUsers = [];
+    let discoverableSearch = 0;
 
     function el(id) { return document.getElementById(id); }
     function signedIn() { return Boolean(user && user.uid); }
@@ -79,6 +80,7 @@
     }
     function showStatus(message) {
         if (typeof statusCallback === 'function') statusCallback(message || '');
+        else { el('appStatus').textContent = message || ''; el('appStatus').hidden = !message; }
     }
     function normalizeEmail(value) { return String(value || '').trim().toLocaleLowerCase('en-US'); }
     function localLegacyState() {
@@ -318,10 +320,17 @@
         }
     }
     function addShareableLink(container, url) {
-        const link = document.createElement('a'); link.href = url; link.textContent = 'Gonbidapen-esteka'; link.target = '_blank'; link.rel = 'noopener';
-        const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'secondary-button'; copy.textContent = 'Esteka kopiatu';
-        copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(url); copy.textContent = 'Kopiatuta'; } catch (_) { container.append(document.createTextNode(' ' + url)); } });
-        container.append(link, document.createTextNode(' '), copy);
+        const row = document.createElement('div'); row.className = 'invitation-share';
+        const address = document.createElement('input'); address.type = 'text'; address.readOnly = true; address.value = url;
+        address.setAttribute('aria-label', 'Partekatzeko gonbidapen-esteka');
+        address.addEventListener('click', () => address.select());
+        const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = 'Kopiatu';
+        const feedback = document.createElement('p'); feedback.className = 'help invitation-share-feedback'; feedback.setAttribute('role', 'status');
+        copy.addEventListener('click', async () => {
+            try { await navigator.clipboard.writeText(url); copy.textContent = 'Kopiatuta'; feedback.textContent = 'Orain itsatsi eta bidali WhatsApp, posta elektroniko edo nahi duzun aplikazioan.'; }
+            catch (_) { address.focus(); address.select(); feedback.textContent = 'Ezin izan da automatikoki kopiatu. Esteka hautatuta dago: kopiatu eta bidali eskuz.'; }
+        });
+        row.append(address, copy); container.append(row, feedback);
     }
     async function resumeMigration(groupId) {
         const raw = root.localStorage.getItem(MIGRATION_KEY + ':' + groupId);
@@ -362,10 +371,14 @@
         button.type = 'button';
         button.textContent = options && options.resume ? 'Jarraitu inportazioa' : options && options.requested ? 'Eskaera bidalita' : options && options.join ? 'Sartzeko eskatu' : 'Ireki';
         button.disabled = Boolean(options && options.requested);
-        button.addEventListener('click', () => {
-            if (options && options.resume) resumeMigration(group.id);
-            else if (options && options.join) requestJoin(group);
-            else openGroup(group.id);
+        button.addEventListener('click', async () => {
+            button.disabled = true;
+            try {
+                if (options && options.resume) await resumeMigration(group.id);
+                else if (options && options.join) await requestJoin(group);
+                else await openGroup(group.id);
+            } catch (error) { showStatus(safeError(error)); }
+            finally { button.disabled = Boolean(options && options.requested); }
         });
         li.append(text, button);
         container.append(li);
@@ -413,6 +426,7 @@
         await refreshDiscoverableGroups();
     }
     async function refreshDiscoverableGroups() {
+        const search = ++discoverableSearch;
         const list = el('discoverableGroupsList');
         list.replaceChildren();
         if (!signedIn() || !user.emailVerified) {
@@ -428,6 +442,8 @@
             const requested = new Set(requests.docs.filter(doc => doc.data().status === 'pending').map(doc => doc.data().groupId));
             const myGroups = await db.collection('users').doc(user.uid).collection('groups').get();
             const memberIds = new Set(myGroups.docs.map(doc => doc.id));
+            if (search !== discoverableSearch) return;
+            list.replaceChildren();
             if (!groups.length) list.textContent = needle ? 'Ez da talderik aurkitu.' : 'Ez dago bilaketa publikoan agertzen den talderik.';
             groups.forEach(group => {
                 if (memberIds.has(group.id)) return;
@@ -440,7 +456,7 @@
         const requestId = group.id + '_' + user.uid;
         try {
             const requestRef = db.collection('joinRequests').doc(requestId);
-            const old = await requestRef.get();
+            const old = await db.collection('users').doc(user.uid).collection('requests').doc(requestId).get();
             if (old.exists && old.data().status === 'pending') { showStatus('Eskaera hau zain dago jada.'); await refreshGroupsGate(); return; }
             const batch = db.batch();
             const request = {
@@ -475,7 +491,16 @@
                 const note = document.createElement('span'); note.textContent = 'Talde honetako kidea zara jada.'; item.append(note);
             } else {
                 const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Gonbidapena onartu';
-                button.addEventListener('click', () => acceptInvite(inviteId)); item.append(button);
+                if (!canCreateGroups()) {
+                    button.disabled = true;
+                    const note = document.createElement('span'); note.textContent = 'Kontu global honek ez du taldeetan parte hartzeko baimenik. Administrazio globalean berrikusi kontuaren baimenak.';
+                    item.append(note);
+                }
+                button.addEventListener('click', async () => {
+                    button.disabled = true; button.textContent = 'Onartzen…';
+                    try { await acceptInvite(inviteId); }
+                    finally { button.disabled = false; button.textContent = 'Gonbidapena onartu'; }
+                }); item.append(button);
             }
         } catch (error) {
             const label = document.createElement('span'); label.textContent = safeError(error); item.append(label);
@@ -483,7 +508,8 @@
         list.append(item);
     }
     async function acceptInvite(inviteId) {
-        if (!user || !user.emailVerified || !canCreateGroups()) { showStatus('Egiaztatu zure posta elektronikoa eta zure baimena gonbidapena onartu aurretik.'); return; }
+        if (!user || !user.emailVerified) { showStatus('Egiaztatu zure posta elektronikoa gonbidapena onartu aurretik.'); return; }
+        if (!canCreateGroups()) { showStatus('Kontu global honek ez du taldeetan parte hartzeko baimenik. Berrikusi kontuaren baimenak administrazio globalean.'); return; }
         try {
             await db.runTransaction(async transaction => {
                 const inviteRef = db.collection('invitations').doc(inviteId);
@@ -529,7 +555,7 @@
                 const memberSnap = await groupRef.collection('members').doc(user.uid).get();
                 memberData = memberSnap.exists ? memberSnap.data() : { uid: user.uid, role: 'superadmin', personId: null };
             }
-            if (selectedUser.uid !== user.uid) return;
+            if (selectedUser.uid !== user?.uid) return;
             activeGroup = { id: groupId, ...groupData };
             activeMember = memberData;
             revision = Number(groupData.revision || 0);
@@ -564,7 +590,7 @@
             }, error => showStatus('Ezin izan da bidaien sinkronizazioa egiaztatu: ' + safeError(error)));
             await loadGroupManagement();
         } catch (error) {
-            await refreshGroupsGate();
+            await showGroupsGate();
             el('groupsFeedback').textContent = 'Ezin izan da taldea ireki: ' + safeError(error);
         }
     }
@@ -826,6 +852,8 @@
         const groupRef = groupReference(groupId);
         const submit = el('createInviteBtn');
         submit.disabled = true;
+        feedback.replaceChildren();
+        feedback.textContent = 'Gonbidapena prestatzen…';
         try {
             let personName = '';
             let newPerson = null;
@@ -868,11 +896,9 @@
             inviteUrl.hash = '';
             inviteUrl.searchParams.set('invite', inviteRef.id);
             feedback.replaceChildren();
-            const text = document.createElement('p'); text.textContent = 'Esteka sortu da. Bidali eskuz gonbidatutako pertsonari; bere helbidearekin saioa hasi behar du.';
-            const link = document.createElement('a'); link.href = inviteUrl.toString(); link.textContent = 'Gonbidapena ireki'; link.target = '_blank'; link.rel = 'noopener';
-            const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'secondary-button'; copy.textContent = 'Esteka kopiatu';
-            copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(inviteUrl.toString()); copy.textContent = 'Kopiatuta'; } catch (_) { feedback.append(document.createTextNode(' Kopiatu esteka: ' + inviteUrl.toString())); } });
-            feedback.append(text, link, copy);
+            const text = document.createElement('p'); text.textContent = 'Kopiatu esteka hau eta bidali gonbidatuari WhatsApp, posta elektroniko edo nahi duzun aplikazioaren bidez. Gonbidatutako helbidearekin saioa hasi behar du.';
+            feedback.append(text);
+            addShareableLink(feedback, inviteUrl.toString());
             el('inviteForm').reset();
             if (newPerson) {
                 try { await loadActiveState(); }
@@ -1196,13 +1222,20 @@
         return Boolean(user && user.providerData && user.providerData.some(provider => provider.providerId === 'password') && !user.emailVerified);
     }
     function showProfileLoadError(error) {
+        if (!signedIn()) return;
         console.error('Kotxea auth initialization failed', error);
         setGate('groupsPanel');
         el('groupsFeedback').textContent = 'Ezin izan dira kontuaren datuak kargatu: ' + safeError(error) + ' Saiatu berriro edo itxi saioa.';
         el('retryProfileBtn').hidden = false;
     }
     async function loadProfileAndGate() {
-        if (!user) { stopPresenceTracking(); activeGroup = null; activeMember = null; setGate('authPanel'); el('resendVerificationBtn').hidden = true; el('verifiedContinueBtn').hidden = true; return; }
+        if (!user) {
+            stopPresenceTracking();
+            if (groupUnsubscribe) groupUnsubscribe(); groupUnsubscribe = null;
+            if (tripSyncUnsubscribe) tripSyncUnsubscribe(); tripSyncUnsubscribe = null;
+            activeGroup = null; activeMember = null;
+            setGate('authPanel'); el('resendVerificationBtn').hidden = true; el('verifiedContinueBtn').hidden = true; return;
+        }
         el('accountMenuBtn').textContent = user.displayName || user.email || 'Kontua';
         if (!el('newGroupParticipantName').value) el('newGroupParticipantName').value = user.displayName || '';
         if (verificationRequired(user)) {
@@ -1231,7 +1264,15 @@
         el('globalAdminNav').hidden = !platformRole;
         await refreshGroupsGate();
     }
-    async function signOut() { if (groupUnsubscribe) groupUnsubscribe(); groupUnsubscribe = null; if (tripSyncUnsubscribe) tripSyncUnsubscribe(); tripSyncUnsubscribe = null; activeGroup = null; activeMember = null; platformRole = null; platformCanParticipate = false; await auth.signOut(); }
+    async function signOut() {
+        try { await auth.signOut(); showStatus(''); }
+        catch (error) { showStatus('Ezin izan da saioa itxi: ' + safeError(error)); }
+    }
+    async function showGroupsGate() {
+        const selectedUid = user?.uid;
+        try { await refreshGroupsGate(); }
+        catch (error) { if (user?.uid === selectedUid) showProfileLoadError(error); }
+    }
     async function start(options) {
         appStateCallback = options && options.onState;
         statusCallback = options && options.onStatus;
@@ -1245,7 +1286,7 @@
             user = authUser;
             if (!authUser) { platformRole = null; platformCanParticipate = false; await loadProfileAndGate(); return; }
             try { await loadProfileAndGate(); }
-            catch (error) { showProfileLoadError(error); }
+            catch (error) { if (user?.uid === authUser.uid) showProfileLoadError(error); }
         });
 
         el('authForm').addEventListener('submit', handleAuthSubmit);
@@ -1278,17 +1319,16 @@
         });
         el('groupSearchForm').addEventListener('submit', event => { event.preventDefault(); refreshDiscoverableGroups(); });
         el('signOutFromGroupsBtn').addEventListener('click', signOut);
-        el('accountMenuBtn').addEventListener('click', refreshGroupsGate);
+        el('accountMenuBtn').addEventListener('click', showGroupsGate);
         el('activeGroupSelect').addEventListener('change', event => openGroup(event.target.value));
-        el('changeGroupNav').addEventListener('click', refreshGroupsGate);
+        el('changeGroupNav').addEventListener('click', showGroupsGate);
         el('globalAdminNav').addEventListener('click', loadAdminPanel);
         el('globalAdminFromGroupsBtn').addEventListener('click', loadAdminPanel);
-        el('backToGroupsBtn').addEventListener('click', refreshGroupsGate);
+        el('backToGroupsBtn').addEventListener('click', showGroupsGate);
         el('editPlatformUserForm').addEventListener('submit', savePlatformUser);
         el('editPlatformRole').addEventListener('change', syncPlatformUserRoleFields);
         el('adminUserFilters').addEventListener('submit', event => event.preventDefault());
         el('adminUserFilters').addEventListener('input', renderAdminUsers);
-        el('adminUserFilters').addEventListener('change', renderAdminUsers);
         el('adminUserFilters').addEventListener('reset', () => root.setTimeout(renderAdminUsers, 0));
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') updateOwnPresence();
@@ -1299,6 +1339,9 @@
             if (dialog && dialog.open) dialog.close();
         }));
         el('inviteForm').addEventListener('submit', inviteMember);
+        el('groupAdminTools').addEventListener('toggle', () => {
+            if (el('groupAdminTools').open) loadGroupManagement();
+        });
         el('saveGroupVisibilityBtn').addEventListener('click', saveDiscoverability);
         root.addEventListener('beforeinstallprompt', event => { event.preventDefault(); deferredInstallPrompt = event; el('installAppBtn').hidden = false; });
         el('installAppBtn').addEventListener('click', () => {
