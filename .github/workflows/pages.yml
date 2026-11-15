@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy Kotxea
 
 on:
   push:
@@ -11,8 +11,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: kotxea-production
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -22,11 +22,56 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare site
-        run: mkdir -p public/assets && cp index.html script.js cloud.js firebase-config.js styles.css manifest.json service-worker.js public/ && cp assets/kotxea-icon.svg public/assets/
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install application and rules-test dependencies
+        run: npm ci
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools@15.36.0
+
+      - name: Check existing application tests
+        run: npm test
+
+      - name: Check Firestore rules in the emulator
+        run: npm run test:rules
+
+      - name: Prepare hosting files
+        run: node scripts/prepare-hosting.js
+
+      - name: Validate Firebase deployment
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KOTXEA_URTXE }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "Missing GitHub secret FIREBASE_SERVICE_ACCOUNT_KOTXEA_URTXE" >&2
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          chmod 600 "$GOOGLE_APPLICATION_CREDENTIALS"
+          firebase deploy --dry-run --only hosting,firestore:rules,firestore:indexes --project kotxea-urtxe
+
+      - name: Deploy Hosting, Firestore rules, and indexes
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: firebase deploy --only hosting,firestore:rules,firestore:indexes --project kotxea-urtxe
+
+      - name: Remove temporary Firebase credentials
+        if: always()
+        run: rm -f "${{ runner.temp }}/firebase-service-account.json"
+
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: public
+          path: public/
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4

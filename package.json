@@ -1,0 +1,13 @@
+{
+  "name": "kotxea",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test logic.test.js cloud.test.js",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-kotxea \"node --test firestore.rules.test.js\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "6.0.0",
+    "firebase": "13.3.0"
+  }
+}

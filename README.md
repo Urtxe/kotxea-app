@@ -4,7 +4,7 @@ Aplicación web móvil para coordinar viajes compartidos al trabajo, repartir tu
 
 ## Arquitectura
 
-- GitHub Pages sirve la web estática.
+- Firebase Hosting sirve la web estática. GitHub Pages permanece como destino de respaldo mientras se valida el cambio.
 - Firebase Authentication gestiona las cuentas con Google o correo y contraseña.
 - Cloud Firestore guarda cada grupo, sus personas, miembros, viajes, invitaciones y solicitudes.
 - `firestore.rules` limita el acceso en Firebase; la interfaz por sí sola no concede permisos.
@@ -13,16 +13,24 @@ Aplicación web móvil para coordinar viajes compartidos al trabajo, repartir tu
 
 El proyecto Firebase asociado es `kotxea-urtxe`. `.firebaserc` lo selecciona por defecto; los comandos de despliegue también indican el ID de forma explícita.
 
-## Publicar las reglas de Firebase
+## Publicar la aplicación y las reglas de Firebase
 
-Desde esta carpeta, con Firebase CLI instalado y una cuenta con acceso al proyecto:
+El workflow de GitHub Actions publica juntos Firebase Hosting, las reglas de Firestore y sus índices cuando se actualiza `main`. Antes de desplegar, ejecuta las pruebas de la aplicación y una validación de Firebase CLI. También se puede iniciar manualmente desde la pestaña Actions.
+
+Para habilitar el despliegue automático, crea una cuenta de servicio dedicada al despliegue en el proyecto `kotxea-urtxe` y guarda su JSON completo en GitHub → Settings → Secrets and variables → Actions, con el nombre `FIREBASE_SERVICE_ACCOUNT_KOTXEA_URTXE`. Dale solo los permisos necesarios para Firebase Hosting, reglas de Firestore e índices. No pongas ese JSON en Git, en `firebase-config.js` ni en el código de la web.
+
+El primer despliegue manual también puede hacerse desde esta carpeta, con Firebase CLI instalado y una cuenta con acceso al proyecto:
 
 ```sh
 firebase login
-firebase deploy --only firestore:rules,firestore:indexes --project kotxea-urtxe
+node scripts/prepare-hosting.js
+firebase deploy --dry-run --only "hosting,firestore:rules,firestore:indexes" --project kotxea-urtxe
+firebase deploy --only "hosting,firestore:rules,firestore:indexes" --project kotxea-urtxe
 ```
 
-El despliegue de reglas no publica la web. La web se publica con el workflow de GitHub Pages al actualizar `main`. El workflow incluye `cloud.js`, la configuración pública, el manifiesto, el service worker y el icono.
+El sitio de Firebase Hosting `kotxea-urtxe` ya existe y está disponible en `https://kotxea-urtxe.web.app`. Comprueba que ese dominio figure en Firebase Authentication → Configuración → Dominios autorizados para permitir el inicio de sesión. El workflow conserva también la publicación en GitHub Pages mientras se valida Hosting; ambas URLs recibirán el mismo frontend y Firestore usará las mismas reglas.
+
+Las reglas de Firestore no son credenciales secretas y pueden estar en el repositorio. Firebase las evalúa en el servidor para autorizar cada lectura y escritura. La cuenta de servicio del workflow sí es secreta: permite publicar cambios y debe quedarse en GitHub Secrets.
 
 No subas claves de cuenta de servicio ni credenciales privadas al repositorio. `firebase-config.js` contiene la configuración web pública; los permisos los aplican Authentication y las reglas de Firestore.
 

@@ -195,7 +195,7 @@
             await openGroup(groupId);
         } catch (error) {
             console.error('Kotxea group setup failed', error);
-            el('createGroupFeedback').textContent = 'Taldea sortzea ez da amaitu. Ez sortu beste talde bat; sakatu “Jarraitu inportazioa” zure taldeetan berriro saiatzeko.';
+            el('createGroupFeedback').textContent = 'Taldea sortzea ez da amaitu: ' + safeError(error) + ' Ez sortu beste talde bat; saiatu inportazioa talde-zerrendatik jarraitzen.';
             showStatus(safeError(error));
         } finally {
             submit.disabled = false;
