@@ -21,6 +21,7 @@
     let saving = false;
     let registrationMode = false;
     let deferredInstallPrompt = null;
+    let adminUsers = [];
 
     function el(id) { return document.getElementById(id); }
     function signedIn() { return Boolean(user && user.uid); }
@@ -43,6 +44,20 @@
             'unavailable': 'Ezin da Firebase-ra konektatu. Egiaztatu konexioa eta saiatu berriro.'
         };
         return messages[error && error.code] || (error && error.message) || 'Errore bat gertatu da. Saiatu berriro.';
+    }
+    function dateInputValue(value) {
+        if (!value) return '';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+    }
+    function formatAdminDate(value) {
+        if (!value) return 'Nunca';
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' });
+    }
+    function normalizeSearch(value) {
+        return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
     }
     function setGate(panelId) {
         ['authPanel', 'groupsPanel', 'adminPanel'].forEach(id => { el(id).hidden = id !== panelId; });
@@ -806,38 +821,80 @@
             if (isSuperAdmin()) {
                 el('adminFeedback').textContent = 'Kontu guztiak kargatzen…';
                 const result = await firebase.app().functions('us-central1').httpsCallable('listAuthUsers')({});
-                const users = result.data.users || [];
-                const userList = el('adminUsersList'); userList.replaceChildren();
-                el('adminUserCount').textContent = users.length + ' kontu Firebase Authentication-en.';
-                users.forEach(profile => {
-                    const row = document.createElement('tr');
-                    const email = document.createElement('td'); email.textContent = profile.email || '—';
-                    const firstName = document.createElement('td'); firstName.textContent = profile.firstName || profile.displayName || '—';
-                    const lastName = document.createElement('td'); lastName.textContent = profile.lastName || '—';
-                    const type = document.createElement('td');
-                    type.textContent = profile.deletionPending ? 'Borrado pendiente' : profile.platformRole === 'superadmin' ? 'Administrador global' : 'Normal';
-                    const actions = document.createElement('td'); actions.className = 'admin-user-actions';
-                    if (!profile.deletionPending) {
-                        const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'secondary-button'; edit.textContent = 'Editar';
-                        edit.addEventListener('click', () => openPlatformUserEditor(profile));
-                        actions.append(edit);
-                    }
-                    if (profile.uid !== user.uid) {
-                        const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'danger-button';
-                        remove.textContent = profile.deletionPending ? 'Reintentar borrado' : 'Borrar';
-                        remove.addEventListener('click', () => openPlatformUserDeletion(profile));
-                        actions.append(remove);
-                    } else if (!profile.deletionPending) actions.append(document.createTextNode('Tu cuenta'));
-                    row.append(email, firstName, lastName, type, actions);
-                    userList.append(row);
-                });
-                if (!users.length) {
-                    const row = document.createElement('tr'); const empty = document.createElement('td');
-                    empty.colSpan = 5; empty.textContent = 'No hay cuentas registradas.'; row.append(empty); userList.append(row);
-                }
+                adminUsers = result.data.users || [];
+                renderAdminUsers();
                 el('adminFeedback').textContent = '';
             }
         } catch (error) { el('adminFeedback').textContent = 'Ezin izan da administrazio-panela kargatu: ' + safeError(error); }
+    }
+    function renderAdminUsers() {
+        const filters = {
+            firstName: normalizeSearch(el('adminUserNameFilter').value.trim()),
+            lastName: normalizeSearch(el('adminUserLastNameFilter').value.trim()),
+            role: el('adminUserRoleFilter').value,
+            createdFrom: el('adminCreatedFrom').value,
+            createdTo: el('adminCreatedTo').value,
+            signInFrom: el('adminLastSignInFrom').value,
+            signInTo: el('adminLastSignInTo').value
+        };
+        const matches = adminUsers.filter(profile => {
+            const firstName = normalizeSearch(profile.firstName);
+            const lastName = normalizeSearch(profile.lastName);
+            const role = profile.deletionPending ? 'deletionPending' : profile.platformRole === 'superadmin' ? 'superadmin' : 'normal';
+            const createdAt = dateInputValue(profile.createdAt);
+            const lastSignInAt = dateInputValue(profile.lastSignInAt);
+            return (!filters.firstName || firstName.includes(filters.firstName))
+                && (!filters.lastName || lastName.includes(filters.lastName))
+                && (!filters.role || role === filters.role)
+                && (!filters.createdFrom || (createdAt && createdAt >= filters.createdFrom))
+                && (!filters.createdTo || (createdAt && createdAt <= filters.createdTo))
+                && (!filters.signInFrom || (lastSignInAt && lastSignInAt >= filters.signInFrom))
+                && (!filters.signInTo || (lastSignInAt && lastSignInAt <= filters.signInTo));
+        });
+        const userList = el('adminUsersList'); userList.replaceChildren();
+        const countText = count => count + (count === 1 ? ' cuenta' : ' cuentas');
+        el('adminUserCount').textContent = matches.length === adminUsers.length
+            ? countText(adminUsers.length) + ' registradas'
+            : countText(matches.length) + ' de ' + countText(adminUsers.length);
+        el('adminUsersEmpty').hidden = matches.length > 0 || adminUsers.length === 0;
+        matches.forEach(profile => {
+            const row = document.createElement('tr');
+            const addCell = (label, content, className) => {
+                const cell = document.createElement('td'); cell.dataset.label = label;
+                if (className) cell.className = className;
+                cell.textContent = content;
+                row.append(cell);
+                return cell;
+            };
+            addCell('Correo electrónico', profile.email || '—', 'admin-user-email');
+            addCell('Nombre', profile.firstName || '—');
+            addCell('Apellidos', profile.lastName || '—');
+            const typeCell = addCell('Tipo de usuario', '', 'admin-user-type');
+            const badge = document.createElement('span'); badge.className = 'admin-role-badge';
+            badge.dataset.role = profile.deletionPending ? 'pending' : profile.platformRole === 'superadmin' ? 'superadmin' : 'normal';
+            badge.textContent = profile.deletionPending ? 'Borrado pendiente' : profile.platformRole === 'superadmin' ? 'Administrador global' : 'Normal';
+            typeCell.append(badge);
+            addCell('Fecha de alta', formatAdminDate(profile.createdAt));
+            addCell('Última conexión', formatAdminDate(profile.lastSignInAt));
+            const actions = document.createElement('td'); actions.className = 'admin-user-actions'; actions.dataset.label = 'Acciones';
+            if (!profile.deletionPending) {
+                const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'secondary-button'; edit.textContent = 'Editar';
+                edit.addEventListener('click', () => openPlatformUserEditor(profile));
+                actions.append(edit);
+            }
+            if (profile.uid !== user.uid) {
+                const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'danger-button';
+                remove.textContent = profile.deletionPending ? 'Reintentar borrado' : 'Borrar';
+                remove.addEventListener('click', () => openPlatformUserDeletion(profile));
+                actions.append(remove);
+            } else if (!profile.deletionPending) actions.append(document.createTextNode('Tu cuenta'));
+            row.append(actions); userList.append(row);
+        });
+        if (!adminUsers.length) {
+            const row = document.createElement('tr'); const empty = document.createElement('td');
+            empty.colSpan = 7; empty.className = 'admin-users-empty-cell'; empty.textContent = 'No hay cuentas registradas.';
+            row.append(empty); userList.append(row);
+        }
     }
     function syncPlatformUserRoleFields() {
         el('editPlatformParticipationRow').hidden = el('editPlatformRole').value !== 'superadmin';
@@ -846,7 +903,7 @@
     function openPlatformUserEditor(profile) {
         el('editPlatformUserUid').value = profile.uid;
         el('editPlatformUserEmail').textContent = profile.email || '';
-        el('editPlatformFirstName').value = profile.firstName || profile.displayName || '';
+        el('editPlatformFirstName').value = profile.firstName || '';
         el('editPlatformLastName').value = profile.lastName || '';
         el('editPlatformRole').value = profile.platformRole === 'superadmin' ? 'superadmin' : 'normal';
         el('editPlatformCanParticipate').checked = profile.canParticipate === true;
@@ -1037,6 +1094,10 @@
         el('backToGroupsBtn').addEventListener('click', refreshGroupsGate);
         el('editPlatformUserForm').addEventListener('submit', savePlatformUser);
         el('editPlatformRole').addEventListener('change', syncPlatformUserRoleFields);
+        el('adminUserFilters').addEventListener('submit', event => event.preventDefault());
+        el('adminUserFilters').addEventListener('input', renderAdminUsers);
+        el('adminUserFilters').addEventListener('change', renderAdminUsers);
+        el('adminUserFilters').addEventListener('reset', () => root.setTimeout(renderAdminUsers, 0));
         el('confirmDeletePlatformUserButton').addEventListener('click', confirmDeletePlatformUser);
         if (document.querySelectorAll) document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEventListener('click', () => {
             const dialog = el(button.dataset.closeDialog);

@@ -53,12 +53,19 @@ exports.listAuthUsers = onCall(functionsConfig, async request => {
         ]);
         page.forEach((user, index) => {
             const profile = profiles[index].exists ? profiles[index].data() : {};
+            const firstName = typeof profile.firstName === 'string' ? profile.firstName.trim() : '';
+            const lastName = typeof profile.lastName === 'string' ? profile.lastName.trim() : '';
+            const legacyName = (user.displayName || profile.displayName || '').trim();
+            const legacyParts = legacyName.split(/\s+/).filter(Boolean);
+            const parsedFirstName = legacyParts.shift() || '';
             users.push({
                 uid: user.uid,
                 email: user.email || '',
                 displayName: user.displayName || profile.displayName || '',
-                firstName: typeof profile.firstName === 'string' ? profile.firstName : '',
-                lastName: typeof profile.lastName === 'string' ? profile.lastName : '',
+                firstName: firstName || (!lastName ? parsedFirstName : ''),
+                lastName: lastName || (!firstName ? legacyParts.join(' ') : ''),
+                createdAt: user.metadata.creationTime || null,
+                lastSignInAt: user.metadata.lastSignInTime || null,
                 emailVerified: user.emailVerified,
                 disabled: user.disabled,
                 deletionPending: deletions[index].exists,

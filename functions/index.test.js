@@ -44,6 +44,20 @@ test('global admin can edit names and switch a user between normal and global ad
     assert.equal((await db.collection('platformRoles').doc(uid).get()).exists, false);
 });
 
+test('user directory separates legacy first and last names and includes auth timestamps', async () => {
+    const uid = `legacy-${randomUUID()}`;
+    await auth.createUser({ uid, email: `${uid}@example.com`, displayName: 'Mikel Urtxegi Garcia' });
+    await db.collection('users').doc(uid).set({ uid, email: `${uid}@example.com`, displayName: 'Mikel Urtxegi Garcia' });
+
+    const result = await functions.listAuthUsers.run(callableRequest(adminUid, {}));
+    const listed = result.users.find(profile => profile.uid === uid);
+
+    assert.equal(listed.firstName, 'Mikel');
+    assert.equal(listed.lastName, 'Urtxegi Garcia');
+    assert.ok(Number.isFinite(Date.parse(listed.createdAt)));
+    assert.ok(listed.lastSignInAt === null || Number.isFinite(Date.parse(listed.lastSignInAt)));
+});
+
 test('deleting a group owner transfers ownership and preserves its trip history', async () => {
     const targetUid = await createUser('Owner');
     const replacementUid = await createUser('Member');

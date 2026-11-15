@@ -13,7 +13,7 @@
             if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
         } catch (_) {}
     </script>
-    <link rel="stylesheet" href="styles.css?v=12">
+    <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
     <div class="app-shell">
@@ -91,14 +91,25 @@
             <p id="adminFeedback" class="help" role="status"></p>
             <section class="admin-section" aria-labelledby="adminGroupsTitle"><h3 id="adminGroupsTitle">Taldeak eta emaitzak</h3><ul id="adminGroupsList" class="group-picker-list"></ul></section>
             <section id="allUsersPanel" class="admin-section" aria-labelledby="adminUsersTitle" hidden>
-                <h3 id="adminUsersTitle">Erregistratutako kontu guztiak</h3>
-                <p id="adminUserCount" class="help"></p>
+                <div class="admin-section-heading">
+                    <div><p class="eyebrow">KONTUAK</p><h3 id="adminUsersTitle">Erregistratutako kontu guztiak</h3></div>
+                    <p id="adminUserCount" class="help"></p>
+                </div>
+                <form id="adminUserFilters" class="admin-user-filters" role="search" aria-label="Filtrar usuarios">
+                    <div class="field"><label for="adminUserNameFilter">Nombre</label><input id="adminUserNameFilter" type="search" autocomplete="off" placeholder="Buscar nombre"></div>
+                    <div class="field"><label for="adminUserLastNameFilter">Apellidos</label><input id="adminUserLastNameFilter" type="search" autocomplete="off" placeholder="Buscar apellidos"></div>
+                    <div class="field"><label for="adminUserRoleFilter">Tipo de usuario</label><select id="adminUserRoleFilter"><option value="">Todos</option><option value="normal">Normal</option><option value="superadmin">Administrador global</option><option value="deletionPending">Borrado pendiente</option></select></div>
+                    <fieldset class="admin-date-filter"><legend>Fecha de alta</legend><label><span class="sr-only">Desde fecha de alta</span><input id="adminCreatedFrom" type="date"></label><label><span class="sr-only">Hasta fecha de alta</span><input id="adminCreatedTo" type="date"></label></fieldset>
+                    <fieldset class="admin-date-filter"><legend>Última conexión</legend><label><span class="sr-only">Desde última conexión</span><input id="adminLastSignInFrom" type="date"></label><label><span class="sr-only">Hasta última conexión</span><input id="adminLastSignInTo" type="date"></label></fieldset>
+                    <button id="clearAdminUserFilters" type="reset" class="secondary-button">Limpiar filtros</button>
+                </form>
                 <div class="admin-table-scroll">
                     <table class="admin-users-table">
-                        <thead><tr><th scope="col">Correo electrónico</th><th scope="col">Nombre</th><th scope="col">Apellidos</th><th scope="col">Tipo de usuario</th><th scope="col">Acciones</th></tr></thead>
+                        <thead><tr><th scope="col">Correo electrónico</th><th scope="col">Nombre</th><th scope="col">Apellidos</th><th scope="col">Tipo de usuario</th><th scope="col">Fecha de alta</th><th scope="col">Última conexión</th><th scope="col">Acciones</th></tr></thead>
                         <tbody id="adminUsersList"></tbody>
                     </table>
                 </div>
+                <p id="adminUsersEmpty" class="admin-users-empty" hidden>No hay usuarios que coincidan con esos filtros.</p>
             </section>
             <button type="button" id="backToGroupsBtn" class="secondary-button">Nire taldeetara itzuli</button>
         </section>
@@ -268,14 +279,13 @@
         <div class="dialog-actions"><button type="button" id="installConfirmBtn" hidden>Instalar</button><form method="dialog"><button class="secondary-button">Ahora no</button></form></div>
     </dialog>
     <dialog id="editPlatformUserDialog" class="save-dialog user-admin-dialog" aria-labelledby="editPlatformUserTitle">
-        <h2 id="editPlatformUserTitle">Editar usuario</h2>
-        <p id="editPlatformUserEmail" class="help"></p>
+        <header class="user-admin-dialog-heading"><span class="dialog-kicker">GESTIÓN DE CUENTA</span><h2 id="editPlatformUserTitle">Editar usuario</h2><p id="editPlatformUserEmail" class="help"></p></header>
         <form id="editPlatformUserForm" class="gate-form">
             <input id="editPlatformUserUid" type="hidden">
-            <div class="field"><label for="editPlatformFirstName">Nombre</label><input id="editPlatformFirstName" maxlength="80" autocomplete="given-name"></div>
-            <div class="field"><label for="editPlatformLastName">Apellidos</label><input id="editPlatformLastName" maxlength="120" autocomplete="family-name"></div>
-            <div class="field"><label for="editPlatformRole">Tipo de usuario</label><select id="editPlatformRole"><option value="normal">Usuario normal</option><option value="superadmin">Administrador global</option></select></div>
-            <label id="editPlatformParticipationRow" class="check-row"><input id="editPlatformCanParticipate" type="checkbox"> Este administrador también puede participar en grupos</label>
+            <fieldset class="user-admin-fields"><legend>Datos personales</legend><div class="field"><label for="editPlatformFirstName">Nombre</label><input id="editPlatformFirstName" maxlength="80" autocomplete="given-name"></div>
+            <div class="field"><label for="editPlatformLastName">Apellidos</label><input id="editPlatformLastName" maxlength="120" autocomplete="family-name"></div></fieldset>
+            <fieldset class="user-admin-fields"><legend>Permisos</legend><div class="field"><label for="editPlatformRole">Tipo de usuario</label><select id="editPlatformRole"><option value="normal">Usuario normal</option><option value="superadmin">Administrador global</option></select></div>
+            <label id="editPlatformParticipationRow" class="check-row"><input id="editPlatformCanParticipate" type="checkbox"> Este administrador también puede participar en grupos</label></fieldset>
             <p id="editPlatformUserFeedback" class="help" role="status"></p>
             <div class="dialog-actions"><button type="submit" id="savePlatformUserButton">Guardar cambios</button><button type="button" class="secondary-button" data-close-dialog="editPlatformUserDialog">Cancelar</button></div>
         </form>
@@ -292,7 +302,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
     <script src="./firebase-config.js"></script>
-    <script src="./cloud.js?v=6"></script>
+    <script src="./cloud.js?v=7"></script>
     <script src="./script.js?v=11"></script>
 </body>
 </html>
