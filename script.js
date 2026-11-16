@@ -81,13 +81,24 @@
         return result;
     }
     function roundedBalances(summary) {
-        const entries = Object.entries(summary).map(([id, values]) => ({ id, cents: Math.round(values.emaitza * 100), remainder: values.emaitza * 100 - Math.round(values.emaitza * 100) }));
+        const entries = Object.entries(summary).map(([id, values]) => {
+            const scaled = values.emaitza * 100;
+            const cents = Math.sign(scaled) * Math.floor(Math.abs(scaled) + 0.5 + 1e-9);
+            return { id, cents, remainder: scaled - cents };
+        });
         // Ignore only sub-two-cent import/floating residue; larger ledger differences need explicit correction.
         if (Math.abs(entries.reduce((sum, entry) => sum + summary[entry.id].emaitza, 0)) < 0.02) {
             let difference = entries.reduce((sum, entry) => sum + entry.cents, 0);
             while (difference !== 0) {
                 const direction = difference > 0 ? -1 : 1;
-                entries.sort((a, b) => direction < 0 ? a.remainder - b.remainder || a.id.localeCompare(b.id) : b.remainder - a.remainder || a.id.localeCompare(b.id));
+                entries.sort((a, b) => {
+                    const cost = direction < 0 ? a.remainder - b.remainder : b.remainder - a.remainder;
+                    if (Math.abs(cost) > 1e-9) return cost;
+                    // Equal-cost corrections grow the balance's magnitude, so a legacy
+                    // -0.16/+0.17 pair becomes -0.17/+0.17 regardless of IDs or float noise.
+                    const growth = entry => Math.abs(entry.cents + direction) - Math.abs(entry.cents);
+                    return growth(b) - growth(a) || a.id.localeCompare(b.id);
+                });
                 entries[0].cents += direction;
                 entries[0].remainder -= direction;
                 difference += direction;

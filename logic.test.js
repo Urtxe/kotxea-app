@@ -37,6 +37,35 @@ test('rounded group balances absorb a one-cent import residue but preserve large
     assert.equal(Object.values(unbalanced).reduce((sum, balance) => sum + balance, 0), 0.5);
 });
 
+test('opposite sixths and thirds use their nearest symmetric hundredths', () => {
+    const rounded = roundedBalances({
+        naroa: { emaitza: -1 / 6 }, nerea: { emaitza: -1 / 3 },
+        leire: { emaitza: 1 / 6 }, gorka: { emaitza: 1 / 3 }
+    });
+    assert.deepEqual(rounded, { naroa: -0.17, nerea: -0.33, leire: 0.17, gorka: 0.33 });
+});
+
+test('legacy one-cent corrections preserve symmetric pairs regardless of IDs and entry order', () => {
+    for (const sign of [1, -1]) {
+        const entries = [
+            ['naroa', { emaitza: -0.16 * sign }], ['nerea', { emaitza: -0.33 * sign }],
+            ['leire', { emaitza: 0.17 * sign }], ['gorka', { emaitza: 0.33 * sign }]
+        ];
+        for (const ordered of [entries, [...entries].reverse()]) {
+            const rounded = roundedBalances(Object.fromEntries(ordered));
+            assert.equal(rounded.naroa, -0.17 * sign);
+            assert.equal(rounded.leire, 0.17 * sign);
+            assert.equal(rounded.nerea, -0.33 * sign);
+            assert.equal(rounded.gorka, 0.33 * sign);
+            assert.equal(Object.values(rounded).reduce((sum, value) => sum + Math.round(value * 100), 0), 0);
+        }
+    }
+});
+
+test('half-hundredths round equally away from zero for positive and negative balances', () => {
+    assert.deepEqual(roundedBalances({ negative: { emaitza: -0.165 }, positive: { emaitza: 0.165 } }), { negative: -0.17, positive: 0.17 });
+});
+
 test('fresh state keeps the four original people and is valid', () => {
     const state = emptyState();
     assert.deepEqual(state.people.map(person => person.id), ['nerea', 'leire', 'naroa', 'gorka']);
