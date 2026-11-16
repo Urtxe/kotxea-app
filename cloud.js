@@ -623,6 +623,8 @@
         if (!activeMember && !isSuperAdmin()) { await showGroupsGate(); return; }
         const [people, trips] = await Promise.all([groupRef.collection('people').get(), groupRef.collection('trips').get()]);
         const next = normalizedStateFromSnapshots(people, trips);
+        const ownerIndex = next.people.findIndex(person => !person.removed && person.linkedUid && person.linkedUid === groupData.ownerUid);
+        if (ownerIndex > 0) next.people.unshift(next.people.splice(ownerIndex, 1)[0]);
         if (!api.validateState(next)) throw new Error('Taldeko bidaia-datuak ez dira baliozkoak; ez dira aldatu.');
         revision = Number(groupData.revision || 0);
         activeGroup = { id: activeGroup.id, ...groupData };
