@@ -1,9 +1,9 @@
-const CACHE_NAME = 'kotxea-shell-v27';
+const CACHE_NAME = 'kotxea-shell-v28';
 const SHELL_FILES = [
     './',
     './index.html',
     './styles.css',
-    './styles.css?v=21',
+    './styles.css?v=22',
     './script.js',
     './script.js?v=18',
     './cloud.js',
