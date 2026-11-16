@@ -32,10 +32,11 @@ test('reloading a verified password account still requires refreshing its earlie
         const clientDb = getClientFirestore(app);
         const [host, port] = process.env.FIRESTORE_EMULATOR_HOST.split(':');
         connectFirestoreEmulator(clientDb, host, Number(port));
+        await db.collection('groupNames').doc(uid).set({ groupId: uid, uid, name: 'Donostia - Arrasate' });
         const createGroup = () => {
             const batch = clientWriteBatch(clientDb);
             batch.set(clientDoc(clientDb, 'groups', uid), {
-                name: 'Donostia - Arrasate', ownerUid: uid, createdBy: uid,
+                name: 'Donostia - Arrasate', nameKey: uid, ownerUid: uid, createdBy: uid,
                 status: 'initializing', discoverable: true, revision: 0
             });
             batch.set(clientDoc(clientDb, 'groups', uid, 'members', uid), { uid, role: 'owner', personId: uid });
@@ -71,6 +72,61 @@ async function createUser(label) {
 function callableRequest(uid, data) {
     return { auth: { uid }, data };
 }
+
+test('removing an owner requires a chosen successor, revokes access and preserves history', async () => {
+    const owner = await createUser('GroupOwner');
+    const successor = await createUser('Successor');
+    const stranger = await createUser('Stranger');
+    const groupId = `remove-${randomUUID()}`;
+    const group = db.collection('groups').doc(groupId);
+    await group.set({ name: 'Remove', status: 'active', ownerUid: owner, revision: 0 });
+    await group.collection('members').doc(owner).set({ uid: owner, role: 'owner', personId: 'old' });
+    await group.collection('members').doc(successor).set({ uid: successor, role: 'member' });
+    await group.collection('people').doc('old').set({ id: 'old', name: 'Owner', active: true, linkedUid: owner, opening: { balance: 1 } });
+    await group.collection('trips').doc('history').set({ driver: 'old' });
+    const invite = db.collection('invitations').doc();
+    await invite.set({ groupId, personId: 'old', status: 'accepted', acceptedBy: owner });
+    const requestRef = db.collection('joinRequests').doc();
+    await requestRef.set({ groupId, uid: owner, personId: 'old', status: 'approved' });
+    const remove = (actor, replacementUid) => functions.removeGroupPerson.run(callableRequest(actor, { groupId, personId: 'old', replacementUid }));
+    await assert.rejects(remove(stranger, successor), error => error.code === 'permission-denied');
+    await assert.rejects(remove(owner), error => error.code === 'failed-precondition');
+    await assert.rejects(remove(owner, stranger), error => error.code === 'failed-precondition');
+    assert.equal((await group.collection('members').doc(owner).get()).exists, true);
+    await remove(owner, successor);
+    assert.equal((await group.get()).data().ownerUid, successor);
+    assert.equal((await group.collection('members').doc(successor).get()).data().role, 'owner');
+    assert.equal((await group.collection('members').doc(owner).get()).exists, false);
+    const person = (await group.collection('people').doc('old').get()).data();
+    assert.equal(person.removed, true);
+    assert.equal(person.linkedUid, undefined);
+    assert.equal(person.opening.balance, 1);
+    assert.equal((await group.collection('trips').doc('history').get()).exists, true);
+    assert.equal((await invite.get()).data().status, 'revoked');
+    assert.equal((await requestRef.get()).data().status, 'revoked');
+    assert.ok(await auth.getUser(owner));
+    await remove(successor);
+});
+
+test('removing an administrator without a traveler profile preserves the chosen owner role', async () => {
+    const owner = await createUser('OwnerWithoutTraveler');
+    const administrator = await createUser('AdministratorWithoutTraveler');
+    const groupId = `admin-remove-${randomUUID()}`;
+    const group = db.collection('groups').doc(groupId);
+    await group.set({ name: 'Admin removal', status: 'active', ownerUid: owner, revision: 0 });
+    await group.collection('members').doc(owner).set({ uid: owner, role: 'owner', personId: null });
+    await group.collection('members').doc(administrator).set({ uid: administrator, role: 'admin', personId: null, email: `${administrator}@example.com` });
+    const invite = db.collection('invitations').doc();
+    await invite.set({ groupId, personId: null, email: `${administrator}@example.com`, status: 'pending' });
+    const remove = replacementUid => functions.removeGroupPerson.run(callableRequest(owner, { groupId, uid: administrator, replacementUid }));
+    await assert.rejects(remove(), error => error.code === 'failed-precondition');
+    await remove(owner);
+    assert.equal((await group.collection('members').doc(administrator).get()).exists, false);
+    assert.equal((await group.collection('members').doc(owner).get()).data().role, 'owner');
+    assert.equal((await group.get()).data().ownerUid, owner);
+    assert.equal((await invite.get()).data().status, 'revoked');
+    assert.ok(await auth.getUser(administrator));
+});
 
 test('global admin can edit names and switch a user between normal and global admin', async () => {
     const uid = await createUser('Ana');

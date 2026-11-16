@@ -3,7 +3,7 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "test": "node --test index.test.js"
+    "test": "node --test index.test.js group-names.test.js"
   },
   "engines": {
     "node": "22"

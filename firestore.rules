@@ -108,11 +108,15 @@ service cloud.firestore {
       allow get: if isSuperAdmin() || isMember(groupId);
       allow list: if isSuperAdmin();
       allow create: if verified() && canCreateGroups()
+        && request.resource.data.nameKey is string
+        && get(/databases/$(database)/documents/groupNames/$(request.resource.data.nameKey)).data.groupId == groupId
+        && get(/databases/$(database)/documents/groupNames/$(request.resource.data.nameKey)).data.uid == request.auth.uid
+        && get(/databases/$(database)/documents/groupNames/$(request.resource.data.nameKey)).data.name == request.resource.data.name
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.status == 'initializing'
         && request.resource.data.revision == 0;
-      allow update: if isSuperAdmin()
+      allow update: if (isSuperAdmin()
         || (isGroupAdmin(groupId)
           && request.resource.data.ownerUid == resource.data.ownerUid
           && request.resource.data.createdBy == resource.data.createdBy
@@ -127,7 +131,9 @@ service cloud.firestore {
           && request.resource.data.ownerUid == resource.data.ownerUid
           && request.resource.data.createdBy == resource.data.createdBy
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt', 'revision'])
-          && request.resource.data.revision == resource.data.revision + 1);
+          && request.resource.data.revision == resource.data.revision + 1))
+        && request.resource.data.name == resource.data.name
+        && request.resource.data.get('nameKey', null) == resource.data.get('nameKey', null);
       allow delete: if isSuperAdmin();
 
       match /members/{uid} {
