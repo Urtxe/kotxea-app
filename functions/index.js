@@ -7,6 +7,8 @@ const { HttpsError, onCall } = require('firebase-functions/v2/https');
 
 initializeApp();
 
+Object.assign(exports, require('./group-names'));
+
 const functionsConfig = {
     region: 'us-central1',
     maxInstances: 2,
@@ -139,6 +141,93 @@ function sortedMemberCandidates(snapshot, excludedUid) {
     });
     return candidates;
 }
+
+exports.removeGroupPerson = onCall(functionsConfig, async request => {
+    const actorUid = request.auth?.uid;
+    if (!actorUid) throw new HttpsError('unauthenticated', 'Hasi saioa.');
+    const { groupId, uid, replacementUid } = request.data || {};
+    let personId = request.data?.personId || null;
+    if (!validUid(groupId) || !(personId ? validUid(personId) : validUid(uid))
+        || (uid != null && !validUid(uid)) || (replacementUid != null && !validUid(replacementUid))) {
+        throw new HttpsError('invalid-argument', 'Berrikusi taldea eta pertsona.');
+    }
+    const db = getFirestore();
+    const groupRef = db.collection('groups').doc(groupId);
+    await db.runTransaction(async transaction => {
+        const [groupSnap, actor, role, deletedActor, invites, requests] = await Promise.all([
+            transaction.get(groupRef),
+            transaction.get(groupRef.collection('members').doc(actorUid)),
+            transaction.get(db.collection('platformRoles').doc(actorUid)),
+            transaction.get(db.collection('deletedAccounts').doc(actorUid)),
+            transaction.get(db.collection('invitations').where('groupId', '==', groupId)),
+            transaction.get(db.collection('joinRequests').where('groupId', '==', groupId))
+        ]);
+        if (deletedActor.exists || !(role.data()?.role === 'superadmin' || ['owner', 'admin'].includes(actor.data()?.role))) {
+            throw new HttpsError('permission-denied', 'Ez duzu taldea administratzeko baimenik.');
+        }
+        let member = uid ? await transaction.get(groupRef.collection('members').doc(uid)) : null;
+        const resolvedPersonId = personId || member?.data()?.personId || null;
+        const personSnap = resolvedPersonId ? await transaction.get(groupRef.collection('people').doc(encodeURIComponent(resolvedPersonId))) : null;
+        if (!groupSnap.exists || groupSnap.data().status !== 'active'
+            || (resolvedPersonId && !personSnap?.exists) || (!resolvedPersonId && !member?.exists)) {
+            throw new HttpsError('failed-precondition', 'Taldea edo pertsona ez dago erabilgarri.');
+        }
+        const group = groupSnap.data();
+        const person = personSnap?.data();
+        if (person?.removed && !member?.exists) return;
+        const targetUid = person?.linkedUid || uid || null;
+        if (uid && targetUid !== uid) throw new HttpsError('failed-precondition', 'Pertsonaren kontua aldatu da.');
+        const memberRef = targetUid ? groupRef.collection('members').doc(targetUid) : null;
+        if (!member && memberRef) member = await transaction.get(memberRef);
+        const transfer = targetUid && (group.ownerUid === targetUid || ['owner', 'admin'].includes(member?.data()?.role));
+        let replacementRef;
+        let replacementRole;
+        if (transfer) {
+            if (!replacementUid || replacementUid === targetUid) {
+                throw new HttpsError('failed-precondition', 'Nori eman nahi diozu taldea administratzeko boterea?');
+            }
+            replacementRef = groupRef.collection('members').doc(replacementUid);
+            const [replacement, deletedReplacement] = await Promise.all([
+                transaction.get(replacementRef), transaction.get(db.collection('deletedAccounts').doc(replacementUid))
+            ]);
+            if (!replacement.exists || deletedReplacement.exists) {
+                throw new HttpsError('failed-precondition', 'Hautatu taldeko beste kide aktibo bat.');
+            }
+            replacementRole = replacement.data().role;
+        }
+        const revokedInvites = invites.docs.filter(doc => (resolvedPersonId && doc.data().personId === resolvedPersonId)
+            || (targetUid && doc.data().acceptedBy === targetUid)
+            || (member?.data()?.email && doc.data().email === member.data().email));
+        const revokedRequests = requests.docs.filter(doc => (resolvedPersonId && doc.data().personId === resolvedPersonId)
+            || (targetUid && doc.data().uid === targetUid));
+        // Small carpool groups fit one transaction; refuse instead of partially removing a large history.
+        if (revokedInvites.length + revokedRequests.length > 440) {
+            throw new HttpsError('failed-precondition', 'Ezin da baja osatu. Jarri harremanetan administratzailearekin.');
+        }
+        if (transfer) {
+            const newRole = group.ownerUid === targetUid || replacementRole === 'owner' ? 'owner' : 'admin';
+            transaction.update(replacementRef, { role: newRole });
+            transaction.set(db.collection('users').doc(replacementUid).collection('groups').doc(groupId), {
+                groupId, groupName: group.name, role: newRole
+            }, { merge: true });
+        }
+        transaction.update(groupRef, {
+            ...(group.ownerUid === targetUid ? { ownerUid: replacementUid } : {}),
+            revision: Number(group.revision || 0) + 1, updatedAt: FieldValue.serverTimestamp()
+        });
+        // Retain historical references and balances; removed people cannot be reactivated by the UI.
+        if (personSnap) transaction.update(personSnap.ref, { removed: true, active: false, linkedUid: FieldValue.delete() });
+        if (memberRef) {
+            transaction.delete(memberRef);
+            transaction.delete(db.collection('users').doc(targetUid).collection('groups').doc(groupId));
+        }
+        revokedInvites.forEach(doc => transaction.update(doc.ref, {
+            status: 'revoked', revokedBy: actorUid, revokedAt: FieldValue.serverTimestamp()
+        }));
+        revokedRequests.forEach(doc => transaction.update(doc.ref, { status: 'revoked' }));
+    });
+    return { success: true };
+});
 
 async function markAccountDeleting(db, actorUid, targetUid) {
     const targetTombstoneRef = db.collection('deletedAccounts').doc(targetUid);

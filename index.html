@@ -217,19 +217,12 @@
         <ul id="groupList" class="group-list" aria-label="Taldeko pertsonak"></ul>
         <p class="help">Pertsona guztiek gidatu dezakete. Bidaia duen pertsona bat kentzean, haren historia eta balantzea gordetzen dira; ez da bidaia berrien aukeretan agertuko.</p>
         <p class="help">Bidaiari berriak taldearen administraziotik gonbidatzen dira, izena eta posta elektronikoa erabiliz.</p>
-        <details class="settings-panel">
-            <summary>Hasierako saldoak konfiguratu</summary>
-            <p id="openingHelp">Sartu Excel-ean pertsona bakoitzak duen saldoa, positiboa edo negatiboa (adibidez: +2,50 edo -1,25). Saldo honi aplikazioko bidaien balantzea gehitzen zaio. Ez du aurreko bidaiarik edo kontagailurik sortzen. Gero ere zuzendu dezakezu; erregistratutako bidaiak mantenduko dira.</p>
-            <form id="openingForm">
-                <fieldset id="openingControls" disabled>
-                    <legend>Hasierako saldoak</legend>
-                    <div id="openingBalances"></div>
-                    <button type="submit">Hasierako saldoak gorde</button>
-                </fieldset>
-            </form>
-        </details>
         <details id="groupAdminTools" class="settings-panel" hidden>
             <summary>Taldearen administrazioa</summary>
+            <form id="renameGroupForm" class="gate-form">
+                <div class="field"><label for="editGroupName">Taldearen izena</label><input id="editGroupName" required maxlength="100"></div>
+                <button type="submit">Izena aldatu</button>
+            </form>
             <p class="help">Kudeatu kideak, eskaerak eta gonbidapenak. Talde honetako datuak soilik ikus ditzakezu.</p>
             <form id="inviteForm" class="gate-form">
                 <div class="field"><label for="inviteEmail">Gonbidatu posta elektronikoarekin</label><input type="email" id="inviteEmail" required autocomplete="email"></div>
@@ -244,6 +237,17 @@
             <label class="check-row"><input type="checkbox" id="groupDiscoverableToggle"> Bilaketetan agertu</label>
             <button type="button" id="saveGroupVisibilityBtn" class="secondary-button">Ikusgaitasuna gorde</button>
             <h3>Talde-administratzaileak</h3><ul id="groupMembersList" class="group-picker-list"></ul>
+        </details>
+        <details class="settings-panel">
+            <summary>Hasierako saldoak konfiguratu</summary>
+            <p id="openingHelp">Sartu Excel-ean pertsona bakoitzak duen saldoa, positiboa edo negatiboa (adibidez: +2,50 edo -1,25). Saldo honi aplikazioko bidaien balantzea gehitzen zaio. Ez du aurreko bidaiarik edo kontagailurik sortzen. Gero ere zuzendu dezakezu; erregistratutako bidaiak mantenduko dira.</p>
+            <form id="openingForm">
+                <fieldset id="openingControls" disabled>
+                    <legend>Hasierako saldoak</legend>
+                    <div id="openingBalances"></div>
+                    <button type="submit">Hasierako saldoak gorde</button>
+                </fieldset>
+            </form>
         </details>
         <details class="backup-tools settings-panel">
             <summary>Segurtasun-kopiak</summary>
@@ -311,7 +315,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
     <script src="./firebase-config.js"></script>
-    <script src="./script.js?v=16"></script>
-    <script src="./cloud.js?v=20"></script>
+    <script src="./script.js?v=17"></script>
+    <script src="./cloud.js?v=21"></script>
 </body>
 </html>
