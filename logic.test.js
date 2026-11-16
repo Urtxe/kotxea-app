@@ -4,6 +4,7 @@ const {
     DEFAULT_PEOPLE,
     emptyState,
     calculateSummary,
+    roundedBalances,
     suggestDrivers,
     migrateLegacy,
     parseStored,
@@ -14,6 +15,27 @@ const {
     setOpeningBalances,
     resetTrips
 } = require('./script.js');
+
+test('rounded group balances remain exactly zero when the underlying balances sum to zero', () => {
+    const rounded = roundedBalances({
+        a: { emaitza: -0.164999 },
+        b: { emaitza: -0.333333 },
+        c: { emaitza: 0.165001 },
+        d: { emaitza: 0.333331 }
+    });
+    assert.equal(Object.values(rounded).reduce((sum, balance) => sum + Math.round(balance * 100), 0), 0);
+    assert.deepEqual(Object.values(rounded).sort((a, b) => a - b), [-0.33, -0.17, 0.17, 0.33]);
+});
+
+test('rounded group balances absorb a one-cent import residue but preserve larger ledger differences', () => {
+    const reported = roundedBalances({
+        a: { emaitza: -0.16 }, b: { emaitza: -0.33 },
+        c: { emaitza: 0.17 }, d: { emaitza: 0.33 }
+    });
+    assert.equal(Object.values(reported).reduce((sum, balance) => sum + Math.round(balance * 100), 0), 0);
+    const unbalanced = roundedBalances({ a: { emaitza: 0.5 }, b: { emaitza: 0 } });
+    assert.equal(Object.values(unbalanced).reduce((sum, balance) => sum + balance, 0), 0.5);
+});
 
 test('fresh state keeps the four original people and is valid', () => {
     const state = emptyState();
@@ -35,7 +57,7 @@ test('Excel balances affect summaries and suggestions without inventing trips, a
     const restored = JSON.parse(JSON.stringify(state));
     assert.equal(validateState(restored), true);
     assert.deepEqual(calculateSummary(restored), calculateSummary(state));
-    const corrected = setOpeningBalances(state, { nerea: 3, leire: -1.25, naroa: -0.75, gorka: -0.5 }).state;
+    const corrected = setOpeningBalances(state, { nerea: 3, leire: -1.25, naroa: -1.25, gorka: -0.5 }).state;
     assert.deepEqual(corrected.trips, state.trips);
     assert.equal(calculateSummary(corrected).nerea.emaitza, 2.5);
     corrected.trips = [];
@@ -70,6 +92,18 @@ test('opening balances validate atomically and invalid backups are rejected', ()
         assert.equal(validateState(bad), false);
     }
     assert.equal(JSON.stringify(state), original);
+    assert.match(setOpeningBalances(state, { nerea: 2, leire: 0, naroa: 0, gorka: 0 }).error, /zero/);
+});
+
+test('saving opening balances preserves removed members and includes them in zero-sum validation', () => {
+    const { state } = setOpeningBalances(emptyState(), { nerea: 2.5, leire: -2.5, naroa: 0, gorka: 0 });
+    const removed = state.people.find(person => person.id === 'leire');
+    removed.active = false;
+    removed.removed = true;
+    const saved = setOpeningBalances(state, { nerea: 2.5, naroa: 0, gorka: 0 });
+    assert.ok(saved.state);
+    assert.equal(calculateSummary(saved.state).leire.emaitza, -2.5);
+    assert.match(setOpeningBalances(state, { nerea: 2, naroa: 0, gorka: 0 }).error, /ateratako/);
 });
 
 test('a person with only an opening balance is archived instead of losing their balance', () => {
@@ -82,7 +116,7 @@ test('editing migrated opening balances keeps legacy counters and does not doubl
     const state = emptyState();
     state.opening.nerea = { gidatu: 3, bidaiak_guztira: 5, bidaiak_portzentaia: 1.5 };
     assert.equal(calculateSummary(state).nerea.emaitza, 1.5);
-    const updated = setOpeningBalances(state, { nerea: -2.25, leire: 0, naroa: 0, gorka: 0 }).state;
+    const updated = setOpeningBalances(state, { nerea: -2.25, leire: 2.25, naroa: 0, gorka: 0 }).state;
     assert.equal(calculateSummary(updated).nerea.emaitza, -2.25);
     assert.equal(calculateSummary(updated).nerea.gidatu, 3);
     assert.equal(calculateSummary(resetTrips(updated)).nerea.emaitza, -2.25);

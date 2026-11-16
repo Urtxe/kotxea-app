@@ -31,11 +31,14 @@
     function setOpeningBalances(state, balances) {
         const next = clone(state);
         for (const person of next.people) {
+            if (person.removed) continue;
             const value = balances[person.id];
             if (!number(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) return { error: 'Pertsona bakoitzarentzat baliozko hasierako saldo bat sartu.' };
             const opening = next.opening[person.id];
             opening.balance = value - (opening.gidatu - opening.bidaiak_portzentaia);
         }
+        const openingTotal = next.people.reduce((sum, person) => sum + openingBalance(next.opening[person.id]), 0);
+        if (Math.abs(openingTotal) >= 0.02) return { error: 'Hasierako saldo guztiek zero eman behar dute, taldetik ateratako pertsonen saldoak barne.' };
         return validateState(next) ? { state: next } : { error: 'Hasierako saldoak ez dira baliozkoak.' };
     }
     function resetTrips(state, clearOpening = false) {
@@ -76,6 +79,21 @@
         const result = Object.create(null); const contributions = tripContribution(state);
         state.people.forEach(person => { const opening = state.opening[person.id] || emptyOpening(); const trip = contributions[person.id]; const gidatu = opening.gidatu + trip.gidatu; const bidaiak = opening.bidaiak_guztira + trip.bidaiak_guztira; const participation = opening.bidaiak_portzentaia + trip.bidaiak_portzentaia; result[person.id] = { gidatu, bidaiak_guztira: bidaiak, bidaiak_portzentaia: participation, emaitza: openingBalance(opening) + trip.gidatu - trip.bidaiak_portzentaia }; });
         return result;
+    }
+    function roundedBalances(summary) {
+        const entries = Object.entries(summary).map(([id, values]) => ({ id, cents: Math.round(values.emaitza * 100), remainder: values.emaitza * 100 - Math.round(values.emaitza * 100) }));
+        // Ignore only sub-two-cent import/floating residue; larger ledger differences need explicit correction.
+        if (Math.abs(entries.reduce((sum, entry) => sum + summary[entry.id].emaitza, 0)) < 0.02) {
+            let difference = entries.reduce((sum, entry) => sum + entry.cents, 0);
+            while (difference !== 0) {
+                const direction = difference > 0 ? -1 : 1;
+                entries.sort((a, b) => direction < 0 ? a.remainder - b.remainder || a.id.localeCompare(b.id) : b.remainder - a.remainder || a.id.localeCompare(b.id));
+                entries[0].cents += direction;
+                entries[0].remainder -= direction;
+                difference += direction;
+            }
+        }
+        return Object.fromEntries(entries.map(entry => [entry.id, entry.cents / 100]));
     }
     function suggestDrivers(state, participantIds) {
         const selected = new Set(participantIds);
@@ -132,7 +150,7 @@
     function removePerson(state, id) { const person = state.people.find(item => item.id === id); if (!person) return { error: 'Pertsona ez da aurkitu.' }; const opening = state.opening[id] || emptyOpening(); const used = Boolean(person.linkedUid) || state.trips.some(trip => trip.driver === id || trip.passengers.includes(id)) || opening.gidatu > 0 || opening.bidaiak_guztira > 0 || opening.bidaiak_portzentaia > 0 || (opening.balance ?? 0) !== 0; if (used) { person.active = false; return { archived: true }; } state.people = state.people.filter(item => item.id !== id); delete state.opening[id]; return { removed: true }; }
     function restoreDefaults(state) { DEFAULT_PEOPLE.forEach(defaultPerson => { const existing = state.people.find(person => person.id === defaultPerson.id || person.name.trim().toLocaleLowerCase() === defaultPerson.name.toLocaleLowerCase()); if (existing) existing.active = true; else { state.people.push(clone(defaultPerson)); state.opening[defaultPerson.id] = emptyOpening(); } }); }
 
-    const api = { VERSION, STATE_KEY, SUMMARY_KEY, HISTORY_KEY, DEFAULT_PEOPLE, emptyState, validateState, validateImport: validateState, calculateSummary, suggestDrivers, parseStored, migrateLegacy, addPerson, removePerson, restoreDefaults, todayString, openingBalance, setOpeningBalances, resetTrips };
+    const api = { VERSION, STATE_KEY, SUMMARY_KEY, HISTORY_KEY, DEFAULT_PEOPLE, emptyState, validateState, validateImport: validateState, calculateSummary, roundedBalances, suggestDrivers, parseStored, migrateLegacy, addPerson, removePerson, restoreDefaults, todayString, openingBalance, setOpeningBalances, resetTrips };
     root.KotxeaLogic = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (typeof document === 'undefined') return;
@@ -184,13 +202,18 @@
         if (!state) return;
         renderLatestTrip();
         const summary = calculateSummary(state);
+        const activePeople = state.people.filter(person => !person.removed);
+        const removedBalance = state.people.filter(person => person.removed).reduce((sum, person) => sum + summary[person.id].emaitza, 0);
+        const visibleSummary = Object.fromEntries(activePeople.map(person => [person.id, summary[person.id]]));
+        if (state.people.some(person => person.removed)) visibleSummary.__removed = { emaitza: removedBalance };
+        const roundedValues = roundedBalances(visibleSummary);
         const balances = el('balanceList');
         const group = el('groupList');
         balances.replaceChildren();
         group.replaceChildren();
-        state.people.forEach(person => {
+        activePeople.forEach(person => {
             const values = summary[person.id];
-            const rounded = Number(values.emaitza.toFixed(2));
+            const rounded = roundedValues[person.id];
             const card = document.createElement('li');
             card.className = 'balance-card';
             card.dataset.personId = person.id;
@@ -211,7 +234,7 @@
             const value = document.createElement('strong');
             value.className = 'balance-value';
             value.id = 'emaitza-' + person.id;
-            value.textContent = formatNumber(values.emaitza);
+            value.textContent = formatNumber(rounded);
             const label = document.createElement('span');
             label.className = 'balance-label';
             label.textContent = rounded < 0 ? 'Gidatzea falta zaio' : rounded > 0 ? 'Dagokiona baino gehiago gidatu du' : 'Orekan';
@@ -251,7 +274,7 @@
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'secondary-button';
-            button.textContent = person.active ? 'Kendu' : 'Berreskuratu';
+            button.textContent = 'Kendu';
             button.hidden = !canManageGroup();
             button.setAttribute('aria-label', person.name + ': ' + button.textContent);
             button.dataset.personId = person.id;
@@ -259,6 +282,13 @@
             member.append(memberHeading, button);
             group.append(member);
         });
+        if (state.people.some(person => person.removed) && roundedValues.__removed !== 0) {
+            const removed = document.createElement('li');
+            removed.className = 'balance-card';
+            removed.dataset.balance = roundedValues.__removed < 0 ? 'negative' : roundedValues.__removed > 0 ? 'positive' : 'balanced';
+            removed.textContent = 'Taldetik ateratakoen saldoa: ' + formatNumber(roundedValues.__removed);
+            balances.append(removed);
+        }
     }
     function tripIdField() { return el('editTripId') || el('hiddenEditTripId'); }
     function renderPeopleChoices(extraIds) {
@@ -399,7 +429,7 @@
     }
     function renderOpeningBalances() {
         const container = el('openingBalances'); container.replaceChildren();
-        state.people.forEach(person => {
+        state.people.filter(person => !person.removed).forEach(person => {
             const field = document.createElement('div'); field.className = 'field';
             const label = document.createElement('label'); label.htmlFor = 'opening-' + person.id;
             label.textContent = person.name + (person.active ? '' : ' (artxibatua)');
@@ -444,7 +474,7 @@
             if (saved && root.KotxeaCloud.currentGroup()?.id === groupId) {
                 state = nextState; renderAll();
                 if (JSON.stringify(previous.people) !== JSON.stringify(nextState.people)) await root.KotxeaCloud.refreshManagement();
-                setStatus(saved.pending ? 'Bidaia gailuan gorde da; Firebase-rekin sinkronizatuko da konexioa dagoenean.' : 'Aldaketak Firebase-n gordeta.');
+                setStatus(saved.pending ? 'Bidaia gailuan gorde da; konexioa berrezartzean sinkronizatuko da.' : '');
                 return saved;
             }
             return false;
@@ -464,13 +494,13 @@
         renderPeopleChoices();
         updateDriverCheckbox(true);
     }
-    function togglePerson(event) { if (readOnly || !canManageGroup()) return; const next = clone(state); const person = next.people.find(item => item.id === event.currentTarget.dataset.personId); if (!person) return; if (person.active) removePerson(next, person.id); else person.active = true; persist(next); }
+    async function togglePerson(event) { if (readOnly || !canManageGroup()) return; const button = event.currentTarget; button.disabled = true; try { await root.KotxeaCloud.removeGroupPerson(button.dataset.personId); } finally { button.disabled = false; } }
     let tripSavedTimer;
     function showTripSaved(pending = false) {
         const dialog = el('tripSavedDialog');
         el('tripSavedTitle').textContent = pending ? 'Bidaia gailuan gordeta' : 'Bidaia gordeta!';
         el('tripSavedMessage').textContent = pending
-            ? 'Bidaia gailuan gorde da. Internetera konektatzean Firebase-rekin sinkronizatuko da.'
+            ? 'Bidaia gailuan gorde da. Konexioa berrezartzean sinkronizatuko da.'
             : 'Bidaia ondo gorde da.';
         clearTimeout(tripSavedTimer);
         if (!dialog.open) dialog.showModal();
@@ -589,7 +619,7 @@
         });
         el('exportBtn')?.addEventListener('click', exportState); el('importFile')?.addEventListener('change', importState); el('resetBtn')?.addEventListener('click', () => resetState(true));
         el('resetToOpeningBtn').addEventListener('click', () => resetState(false));
-        if (!root.KotxeaCloud) { setStatus('Firebase konexioa falta da. Orria berritu edo administratzaileari jakinarazi.'); return; }
+        if (!root.KotxeaCloud) { setStatus('Ezin izan da taldea kargatu. Orria berritu eta saiatu berriro.'); return; }
         root.KotxeaCloud.start({
             onState: (nextState) => {
                 state = nextState; readOnly = false;
@@ -600,7 +630,7 @@
         }).catch(error => {
             console.error('Kotxea startup failed', error);
             const warning = el('startupWarning');
-            warning.textContent = 'Kotxea ezin izan da abiarazi: ' + (error && error.message ? error.message : 'Firebase konexioa egiaztatu.');
+            warning.textContent = 'Kotxea ezin izan da abiarazi. Egiaztatu Interneteko konexioa eta saiatu berriro.';
             warning.hidden = false;
         });
     }

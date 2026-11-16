@@ -37,10 +37,14 @@ async function seedAccount(uid, role, extra = {}) {
 }
 
 async function createGroupBatch(db, uid) {
+    await testEnv.withSecurityRulesDisabled(async context => {
+        await setDoc(doc(context.firestore(), 'groupNames/kotxea'), { groupId: 'group-1', uid, name: 'Kotxea' });
+    });
     const batch = writeBatch(db);
     const personId = 'creator-person';
     batch.set(doc(db, 'groups', 'group-1'), {
         name: 'Kotxea',
+        nameKey: 'kotxea',
         ownerUid: uid,
         createdBy: uid,
         discoverable: true,
@@ -74,6 +78,16 @@ test('a verified regular account can create a group and join as its owner partic
     }).firestore();
 
     await assertSucceeds(createGroupBatch(db, uid));
+});
+
+test('group names require a server reservation and cannot be renamed directly even by a global admin', async () => {
+    const uid = 'name-admin';
+    await seedAccount(uid, 'superadmin', { canParticipate: true });
+    const db = testEnv.authenticatedContext(uid, { email: `${uid}@example.com`, email_verified: true }).firestore();
+    await assertFails(setDoc(doc(db, 'groups/unreserved'), { name: 'Kotxea', nameKey: 'missing', ownerUid: uid, createdBy: uid, status: 'initializing', revision: 0 }));
+    await assertFails(setDoc(doc(db, 'groupNames/fake'), { groupId: 'unreserved', name: 'Kotxea', uid }));
+    await assertSucceeds(createGroupBatch(db, uid));
+    await assertFails(updateDoc(doc(db, 'groups/group-1'), { name: 'Other name' }));
 });
 
 test('a verified regular account can finish setting up its new group', async () => {

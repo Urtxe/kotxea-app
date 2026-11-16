@@ -47,12 +47,16 @@
             'auth/user-not-found': 'Ez dago konturik posta horrekin.',
             'auth/popup-closed-by-user': 'Saioa hasteko leihoa itxi duzu.',
             'auth/popup-blocked': 'Arakatzaileak saioa hasteko leihoa blokeatu du.',
-            'auth/unauthorized-domain': 'Webgune honen domeinua ez dago Firebase Auth-en baimenduta.',
+            'auth/unauthorized-domain': 'Webgune honetatik ezin da saioa hasi. Saiatu beste gailu edo webgune batetik.',
             'permission-denied': 'Ez duzu ekintza hori egiteko baimenik.',
             'failed-precondition': 'Datuak beste erabiltzaile batek aldatu ditu. Berritu taldea eta saiatu berriro.',
-            'unavailable': 'Ezin da Firebase-ra konektatu. Egiaztatu konexioa eta saiatu berriro.'
+            'unavailable': 'Ezin da zerbitzariarekin konektatu. Egiaztatu konexioa eta saiatu berriro.'
         };
-        return messages[error && error.code] || (error && error.message) || 'Errore bat gertatu da. Saiatu berriro.';
+        // Don't expose Firebase/Firestore diagnostics in the interface; known
+        // user-actionable cases are translated above.
+        const code = error && error.code;
+        if (code && code.startsWith('functions/') && !['functions/internal', 'functions/unknown'].includes(code)) return error.message || 'Ezin izan da eragiketa osatu.';
+        return messages[code] || (error && !code && error.message) || 'Ezin izan da eragiketa osatu. Saiatu berriro.';
     }
     function dateInputValue(value) {
         if (!value) return '';
@@ -114,6 +118,7 @@
         };
         if (person.default) document.default = true;
         if (person.linkedUid) document.linkedUid = person.linkedUid;
+        if (person.removed) document.removed = true;
         if (old && old.createdBy) document.createdBy = old.createdBy;
         else document.createdBy = user.uid;
         return document;
@@ -127,6 +132,7 @@
             const person = { id: data.id, name: data.name, active: data.active !== false };
             if (data.default) person.default = true;
             if (data.linkedUid) person.linkedUid = data.linkedUid;
+            if (data.removed) person.removed = true;
             people.push(person);
             opening[data.id] = data.opening || { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0 };
         });
@@ -183,7 +189,7 @@
         if (!signedIn()) { feedback.textContent = 'Hasi saioa berriro taldea sortzeko.'; return; }
         if (!canCreateGroups()) { feedback.textContent = 'Kontu honek ezin du talderik sortu. Egiaztatu kontuko baimenak.'; return; }
         if (!user.emailVerified) { feedback.textContent = 'Egiaztatu posta elektronikoa taldea sortu aurretik.'; return; }
-        const name = el('newGroupName').value.trim();
+        let name = el('newGroupName').value.trim();
         const creatorName = el('newGroupParticipantName').value.trim();
         if (!name) { feedback.textContent = 'Idatzi taldearen izena.'; el('newGroupName').focus(); return; }
         if (!creatorName) { feedback.textContent = 'Idatzi zure izena taldeko bidaiari gisa.'; el('newGroupParticipantName').focus(); return; }
@@ -239,8 +245,11 @@
             submitDisabled = true;
             feedback.textContent = 'Taldea eta datuak prestatzen...';
             const groupId = db.collection('groups').doc().id;
+            const reserved = await firebase.app().functions('us-central1').httpsCallable('prepareGroupName')({ name, groupId });
+            name = reserved.data.name;
             const groupData = {
-                name,
+                name: reserved.data.name,
+                nameKey: reserved.data.nameKey,
                 ownerUid: user.uid,
                 createdBy: user.uid,
                 discoverable: el('newGroupDiscoverable').checked,
@@ -590,11 +599,11 @@
                 if (!snapshot.exists || !activeGroup || activeGroup.id !== groupId) return;
                 const newRevision = Number(snapshot.data().revision || 0);
                 if (newRevision !== revision && !saving) loadActiveState().catch(error => showStatus(safeError(error)));
-            }, error => showStatus('Taldearen sinkronizazioa eten da: ' + safeError(error)));
+            }, error => { if (error.code === 'permission-denied') showGroupsGate().catch(() => {}); else showStatus('Taldearen sinkronizazioa eten da: ' + safeError(error)); });
             tripSyncUnsubscribe = groupRef.collection('trips').onSnapshot({ includeMetadataChanges: true }, snapshot => {
                 const hasPending = snapshot.docs.some(doc => doc.metadata.hasPendingWrites);
-                if (hasPending) showStatus('Bidaiak gailuan gordeta daude; Firebase-rekin sinkronizatzen ari dira.');
-                else if (pendingTripWrites) showStatus('Bidaiak Firebase-rekin sinkronizatuta.');
+                if (hasPending) showStatus('Bidaiak gailuan gordeta daude; konexioa berrezartzean sinkronizatuko dira.');
+                else if (pendingTripWrites) showStatus('');
                 pendingTripWrites = hasPending;
             }, error => showStatus('Ezin izan da bidaien sinkronizazioa egiaztatu: ' + safeError(error)));
             await loadGroupManagement();
@@ -609,11 +618,17 @@
         const groupSnap = await groupRef.get();
         if (!groupSnap.exists || groupSnap.data().status !== 'active') throw new Error('Taldea ez dago erabilgarri.');
         const groupData = groupSnap.data();
+        const memberSnap = await groupRef.collection('members').doc(user.uid).get();
+        activeMember = memberSnap.exists ? memberSnap.data() : null;
+        if (!activeMember && !isSuperAdmin()) { await showGroupsGate(); return; }
         const [people, trips] = await Promise.all([groupRef.collection('people').get(), groupRef.collection('trips').get()]);
         const next = normalizedStateFromSnapshots(people, trips);
         if (!api.validateState(next)) throw new Error('Taldeko bidaia-datuak ez dira baliozkoak; ez dira aldatu.');
         revision = Number(groupData.revision || 0);
         activeGroup = { id: activeGroup.id, ...groupData };
+        el('groupAdminTools').hidden = !canManageGroup();
+        const groupOption = Array.from(el('activeGroupSelect').options || []).find(option => option.value === activeGroup.id);
+        if (groupOption) groupOption.textContent = groupData.name;
         if (typeof appStateCallback === 'function') appStateCallback(next, activeGroup, activeMember);
         el('groupDiscoverableToggle').checked = Boolean(groupData.discoverable);
     }
@@ -638,7 +653,7 @@
         const newTrips = new Map(next.trips.map(trip => [trip.id, trip]));
         if (onlyAddedTrips(previous, next)) {
             if (root.navigator.onLine === false && !persistenceEnabled) {
-                showStatus('Ezin da bidaiarik gorde konexiorik gabe: gailu honetan Firestore-ren memoria iraunkorra ez dago erabilgarri.');
+                showStatus('Ezin dira bidaia berriak konexiorik gabe gorde. Konektatu Internetera eta saiatu berriro.');
                 return false;
             }
             const additions = next.trips.filter(trip => !oldTrips.has(trip.id));
@@ -663,7 +678,7 @@
             activeGroup.revision = revision;
             const commit = batch.commit();
             commit.then(() => {
-                if (activeGroup && activeGroup.id === targetGroupId && user && user.uid === targetUid) showStatus('Bidaia Firebase-rekin sinkronizatuta.');
+                if (activeGroup && activeGroup.id === targetGroupId && user && user.uid === targetUid) showStatus('');
             }).catch(async error => {
                 console.error('Kotxea trip sync failed', error);
                 showStatus('Bidaia ezin izan da sinkronizatu: ' + safeError(error));
@@ -671,7 +686,7 @@
                     try { await loadActiveState(); } catch (_) {}
                 }
             });
-            showStatus('Bidaia gailuan gorde da; Firebase-rekin sinkronizatzen ari da.');
+            showStatus('Bidaia gailuan gorde da; konexioa berrezartzean sinkronizatuko da.');
             return { pending: true };
         }
         saving = true;
@@ -747,7 +762,7 @@
             invitePeople.replaceChildren(new Option('Bidaiari berria gonbidatu', ''));
             people.docs.forEach(personDoc => {
                 const person = personDoc.data();
-                if (!person.linkedUid) invitePeople.add(new Option(person.name, person.id));
+                if (!person.linkedUid && !person.removed) invitePeople.add(new Option(person.name, person.id));
             });
             const updateInvitePerson = () => {
                 const adminInvite = el('inviteRole').value === 'admin';
@@ -769,7 +784,7 @@
                 picker.add(new Option('Pertsona berria sortu', ''));
                 people.docs.forEach(personDoc => {
                     const person = personDoc.data();
-                    if (!person.linkedUid) picker.add(new Option(person.name, person.id));
+                    if (!person.linkedUid && !person.removed) picker.add(new Option(person.name, person.id));
                 });
                 const approve = document.createElement('button'); approve.type = 'button'; approve.textContent = 'Onartu';
                 approve.addEventListener('click', () => resolveJoinRequest(doc.id, request, picker.value));
@@ -798,8 +813,12 @@
                     row.append(button);
                 }
                 memberList.append(row);
+                const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'secondary-button'; remove.textContent = 'Kendu';
+                remove.addEventListener('click', () => removeGroupPerson(member.personId, member.uid));
+                row.append(remove);
             });
             el('groupDiscoverableToggle').checked = Boolean(activeGroup.discoverable);
+            el('editGroupName').value = activeGroup.name;
         } catch (error) { showStatus('Ezin izan dira taldeko eskaerak kargatu: ' + safeError(error)); }
     }
     async function resolveJoinRequest(requestId, request, personId, reject = false) {
@@ -937,6 +956,51 @@
             await batch.commit();
             await loadGroupManagement();
         } catch (error) { showStatus('Ezin izan da taldeko rola aldatu: ' + safeError(error)); }
+    }
+    async function renameGroup(event) {
+        event.preventDefault();
+        if (!activeGroup || !canManageGroup()) return;
+        try {
+            await firebase.app().functions('us-central1').httpsCallable('renameGroup')({ groupId: activeGroup.id, name: el('editGroupName').value });
+            await openGroup(activeGroup.id);
+            showStatus('Taldearen izena aldatu da.');
+        } catch (error) { showStatus('Ezin izan da taldearen izena aldatu: ' + safeError(error)); }
+    }
+    function chooseReplacement(members, excludedUid) {
+        return new Promise(resolve => {
+            const dialog = document.createElement('dialog');
+            const form = document.createElement('form'); form.method = 'dialog';
+            const label = document.createElement('label'); label.textContent = 'Nori eman nahi diozu taldea administratzeko boterea?';
+            const select = document.createElement('select'); select.required = true;
+            select.add(new Option('Aukeratu taldekide bat', ''));
+            members.filter(member => member.uid !== excludedUid).forEach(member => select.add(new Option(member.displayName || member.email, member.uid)));
+            label.append(select);
+            const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = 'Utzi'; cancel.onclick = () => dialog.close();
+            const submit = document.createElement('button'); submit.type = 'submit'; submit.textContent = 'Administrazioa eman eta kendu';
+            form.append(label, cancel, submit); dialog.append(form); document.body.append(dialog);
+            form.addEventListener('submit', event => { event.preventDefault(); dialog.close(select.value); });
+            dialog.addEventListener('close', () => { const uid = dialog.returnValue; dialog.remove(); resolve(uid || null); }, { once: true });
+            dialog.showModal();
+        });
+    }
+    async function removeGroupPerson(personId, uid) {
+        if (!activeGroup || !canManageGroup()) return;
+        const groupId = activeGroup.id;
+        try {
+            const membersSnapshot = await groupReference(groupId).collection('members').get();
+            const members = membersSnapshot.docs.map(doc => doc.data());
+            const target = members.find(member => uid ? member.uid === uid : member.personId === personId);
+            let replacementUid = null;
+            if (target && ['owner', 'admin'].includes(target.role)) {
+                if (!members.some(member => member.uid !== target.uid)) { showStatus('Beste taldekide bat behar da administrazioa emateko.'); return; }
+                replacementUid = await chooseReplacement(members, target.uid);
+                if (!replacementUid) return;
+            } else if (!root.confirm('Pertsona hau taldetik kendu? Talderako sarbidea galduko du. Aurreko bidaiak gordeko dira.')) return;
+            await firebase.app().functions('us-central1').httpsCallable('removeGroupPerson')({ groupId, ...(personId ? { personId } : { uid }), replacementUid });
+            if (target?.uid === user.uid) await showGroupsGate();
+            else { await loadActiveState(); await loadGroupManagement(); }
+            showStatus('Pertsona taldetik kendu da.');
+        } catch (error) { showStatus('Ezin izan da pertsona taldetik kendu: ' + safeError(error)); }
     }
     async function saveDiscoverability() {
         if (!activeGroup || !canManageGroup()) return;
@@ -1245,8 +1309,9 @@
             activeGroup = null; activeMember = null;
             setGate('authPanel'); el('resendVerificationBtn').hidden = true; el('verifiedContinueBtn').hidden = true; return;
         }
-        el('accountMenuBtn').textContent = user.displayName || user.email || 'Kontua';
-        if (!el('newGroupParticipantName').value) el('newGroupParticipantName').value = user.displayName || '';
+        const firstName = user.displayName ? user.displayName.trim().split(/\s+/)[0] : '';
+        el('accountMenuBtn').textContent = firstName || user.email || 'Kontua';
+        if (!el('newGroupParticipantName').value) el('newGroupParticipantName').value = firstName;
         if (verificationRequired(user)) {
             stopPresenceTracking();
             setGate('authPanel');
@@ -1285,11 +1350,11 @@
     async function start(options) {
         appStateCallback = options && options.onState;
         statusCallback = options && options.onStatus;
-        if (!root.firebase || !root.KOTXEA_FIREBASE_CONFIG) { setGate('authPanel'); updateAuthFeedback('Firebase konfigurazioa ezin izan da kargatu.'); return; }
+        if (!root.firebase || !root.KOTXEA_FIREBASE_CONFIG) { setGate('authPanel'); updateAuthFeedback('Ezin izan da aplikazioa kargatu. Saiatu berriro geroago.'); return; }
         if (!firebase.apps.length) firebase.initializeApp(root.KOTXEA_FIREBASE_CONFIG);
         auth = firebase.auth(); db = firebase.firestore();
         root.addEventListener('offline', () => { if (activeGroup) showStatus('Sin conexión. Los viajes nuevos se guardarán en este dispositivo y se sincronizarán al volver internet.'); });
-        root.addEventListener('online', () => { if (activeGroup) showStatus('Conexión recuperada; Firestore está sincronizando los viajes guardados en el dispositivo.'); });
+        root.addEventListener('online', () => { if (activeGroup) showStatus('Konexioa berreskuratu da; gailuan gordetako bidaiak sinkronizatzen ari dira.'); });
         try { await db.enablePersistence({ synchronizeTabs: true }); persistenceEnabled = true; } catch (error) { if (!error || error.code !== 'failed-precondition') console.warn('Firestore offline cache disabled:', error && error.code); }
         auth.onAuthStateChanged(async authUser => {
             user = authUser;
@@ -1353,6 +1418,7 @@
             if (el('groupAdminTools').open) loadGroupManagement();
         });
         el('saveGroupVisibilityBtn').addEventListener('click', saveDiscoverability);
+        el('renameGroupForm').addEventListener('submit', renameGroup);
         root.addEventListener('beforeinstallprompt', event => { event.preventDefault(); deferredInstallPrompt = event; el('installAppBtn').hidden = false; });
         el('installAppBtn').addEventListener('click', () => {
             const userAgent = root.navigator.userAgent || '';
@@ -1400,6 +1466,7 @@
     root.KotxeaCloud = {
         start,
         persistState,
+        removeGroupPerson,
         currentUser: () => user,
         currentGroup: () => activeGroup,
         currentMember: () => activeMember,

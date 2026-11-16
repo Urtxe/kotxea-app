@@ -73,7 +73,13 @@ async function startCloud(role, canParticipate = false, userAgent = '', scenario
     const context = {
         console,
         document: { getElementById: id => elements.get(id) || null, querySelector: () => nav, querySelectorAll: () => [], createElement: tagName => ({ tagName, children: [], listeners: {}, append(...children) { this.children.push(...children); }, addEventListener(type, callback) { this.listeners[type] = callback; }, setAttribute() {} }), visibilityState: 'visible', addEventListener() {} },
-        firebase: { apps: [{}], auth: () => auth, firestore },
+        firebase: {
+            apps: [{}], auth: () => auth, firestore,
+            app: () => ({ functions: () => ({ httpsCallable: name => async payload => {
+                if (name === 'prepareGroupName') return { data: { name: payload.name.trim(), nameKey: payload.name.trim().toLocaleLowerCase() } };
+                throw new Error('Unexpected callable: ' + name);
+            } }) })
+        },
         KOTXEA_FIREBASE_CONFIG: {},
         localStorage: { length: 0, getItem() { return null; }, setItem() {}, removeItem() {} },
         navigator: { userAgent, platform: '', maxTouchPoints: 0 }, location: { protocol: 'https:', href: scenario.href || 'https://example.com/', pathname: '/' },
