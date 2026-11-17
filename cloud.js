@@ -375,16 +375,20 @@
         const title = document.createElement('strong');
         title.textContent = group.name || 'Taldea';
         const description = document.createElement('span');
-        description.textContent = group.status === 'initializing' ? 'Inportazioa osatu gabe' : 'Talde partekatua';
+        description.textContent = group.status === 'initializing' ? 'Inportazioa osatu gabe'
+            : group.status === 'deleting' ? 'Taldea ezabatzen ari da' : 'Talde partekatua';
         text.append(title, description);
         const button = document.createElement('button');
         button.type = 'button';
-        button.textContent = options && options.resume ? 'Jarraitu inportazioa' : options && options.requested ? 'Eskaera bidalita' : options && options.join ? 'Sartzeko eskatu' : 'Ireki';
-        button.disabled = Boolean(options && options.requested);
+        const canResumeDeletion = group.status === 'deleting' && (isSuperAdmin() || group.deletionRequestedBy === user.uid);
+        button.textContent = group.status === 'deleting' ? (canResumeDeletion ? 'Ezabapena amaitu' : 'Ezabatzen')
+            : options && options.resume ? 'Jarraitu inportazioa' : options && options.requested ? 'Eskaera bidalita' : options && options.join ? 'Sartzeko eskatu' : 'Ireki';
+        button.disabled = Boolean(options && options.requested) || group.status === 'deleting' && !canResumeDeletion;
         button.addEventListener('click', async () => {
             button.disabled = true;
             try {
-                if (options && options.resume) await resumeMigration(group.id);
+                if (group.status === 'deleting') await resumeGroupDeletion(group, false);
+                else if (options && options.resume) await resumeMigration(group.id);
                 else if (options && options.join) await requestJoin(group);
                 else await openGroup(group.id);
             } catch (error) { showStatus(safeError(error)); }
@@ -968,6 +972,21 @@
             showStatus('Taldearen izena aldatu da.');
         } catch (error) { showStatus('Ezin izan da taldearen izena aldatu: ' + safeError(error)); }
     }
+    async function deleteGroup() {
+        if (!activeGroup || !canManageGroup()) return;
+        await resumeGroupDeletion(activeGroup, false);
+    }
+    async function resumeGroupDeletion(group, returnToAdmin) {
+        if (!group || !(isSuperAdmin() || canManageGroup() || group.deletionRequestedBy === user?.uid)) return;
+        const groupId = group.id;
+        if (!root.confirm(`«${group.name}» taldea eta bertako bidaiak, pertsonak eta gonbidapenak behin betiko ezabatuko dira. Ekintza hau ezin da desegin. Jarraitu?`)) return;
+        try {
+            await firebase.app().functions('us-central1').httpsCallable('deleteGroup')({ groupId });
+            if (returnToAdmin) await loadAdminPanel();
+            else await showGroupsGate();
+            showStatus('Taldea behin betiko ezabatu da.');
+        } catch (error) { showStatus('Ezin izan da taldea ezabatu: ' + safeError(error)); }
+    }
     function chooseReplacement(members, excludedUid) {
         return new Promise(resolve => {
             const dialog = document.createElement('dialog');
@@ -1052,7 +1071,13 @@
                     const balances = state.people.map(person => person.name + ' ' + Number(summary[person.id].emaitza).toLocaleString('eu-ES', { maximumFractionDigits: 2 })).join(' · ');
                     description.textContent = members.size + ' erabiltzaile · ' + trips.size + ' bidaia · ' + requests.size + ' eskaera · ' + invitations.size + ' gonbidapen' + (balances ? ' · ' + balances : ' · bidaiaririk gabe');
                 } else description.textContent = 'Taldea prestatzen ari da';
-                const open = document.createElement('button'); open.type = 'button'; open.textContent = 'Kudeatu'; open.addEventListener('click', () => openGroup(group.id));
+                const open = document.createElement('button'); open.type = 'button';
+                if (group.status === 'deleting') {
+                    open.textContent = 'Ezabapena amaitu';
+                    open.addEventListener('click', () => resumeGroupDeletion(group, true));
+                } else {
+                    open.textContent = 'Kudeatu'; open.addEventListener('click', () => openGroup(group.id));
+                }
                 text.append(label, description); row.append(text, open); list.append(row);
             }));
             if (isSuperAdmin()) {
@@ -1421,6 +1446,7 @@
         });
         el('saveGroupVisibilityBtn').addEventListener('click', saveDiscoverability);
         el('renameGroupForm').addEventListener('submit', renameGroup);
+        el('deleteGroupBtn').addEventListener('click', deleteGroup);
         root.addEventListener('beforeinstallprompt', event => { event.preventDefault(); deferredInstallPrompt = event; el('installAppBtn').hidden = false; });
         el('installAppBtn').addEventListener('click', () => {
             const userAgent = root.navigator.userAgent || '';
