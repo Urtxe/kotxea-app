@@ -35,3 +35,12 @@ test('legacy names block duplicates; rename updates directory, memberships and i
     assert.equal((await db.collection('users').doc(uid).collection('groups').doc(groupId).get()).data().groupName, nextName);
     assert.equal((await invitation.get()).data().groupName, nextName);
 });
+
+test('global admin can rename a group without membership', async () => {
+    const globalAdmin = randomUUID(), groupId = randomUUID(), name = `Admin renamed ${randomUUID()}`;
+    await db.collection('platformRoles').doc(globalAdmin).set({ role: 'superadmin' });
+    const group = db.collection('groups').doc(groupId);
+    await group.set({ name: 'Before', createdBy: randomUUID(), ownerUid: randomUUID(), status: 'active' });
+    await functions.renameGroup.run(request(globalAdmin, { groupId, name }));
+    assert.equal((await group.get()).data().name, name);
+});

@@ -128,6 +128,45 @@ test('removing an administrator without a traveler profile preserves the chosen 
     assert.ok(await auth.getUser(administrator));
 });
 
+test('group owners and global admins can permanently delete a group and its references', async () => {
+    const owner = await createUser('DeleteGroupOwner');
+    const member = await createUser('DeleteGroupMember');
+    const groupId = `delete-${randomUUID()}`;
+    const nameKey = `delete-name-${randomUUID()}`;
+    const group = db.collection('groups').doc(groupId);
+    await group.set({ name: 'Delete me', nameKey, ownerUid: owner, createdBy: owner, status: 'active', revision: 0 });
+    await db.collection('groupNames').doc(nameKey).set({ groupId, uid: owner, name: 'Delete me' });
+    await db.collection('directoryGroups').doc(groupId).set({ groupId, name: 'Delete me' });
+    for (const [uid, role] of [[owner, 'owner'], [member, 'member']]) {
+        await group.collection('members').doc(uid).set({ uid, role });
+        await db.collection('users').doc(uid).collection('groups').doc(groupId).set({ groupId, role });
+    }
+    await group.collection('people').doc('traveler').set({ id: 'traveler', name: 'Traveler' });
+    await group.collection('trips').doc('trip').set({ id: 'trip', driver: 'traveler' });
+    const invitation = db.collection('invitations').doc();
+    const joinRequest = db.collection('joinRequests').doc();
+    await invitation.set({ groupId, status: 'pending' });
+    await joinRequest.set({ groupId, status: 'pending' });
+    const deleteAs = uid => functions.deleteGroup.run(callableRequest(uid, { groupId }));
+
+    await assert.rejects(deleteAs(member), error => error.code === 'permission-denied');
+    await deleteAs(owner);
+    assert.equal((await group.get()).exists, false);
+    assert.equal((await group.collection('trips').get()).empty, true);
+    assert.equal((await db.collection('groupNames').doc(nameKey).get()).exists, false);
+    assert.equal((await db.collection('directoryGroups').doc(groupId).get()).exists, false);
+    assert.equal((await invitation.get()).exists, false);
+    assert.equal((await joinRequest.get()).exists, false);
+    assert.equal((await db.collection('users').doc(owner).collection('groups').doc(groupId).get()).exists, false);
+    assert.equal((await db.collection('users').doc(member).collection('groups').doc(groupId).get()).exists, false);
+
+    const globalGroupId = `global-delete-${randomUUID()}`;
+    const globalGroup = db.collection('groups').doc(globalGroupId);
+    await globalGroup.set({ name: 'Global delete', ownerUid: member, createdBy: member, status: 'active' });
+    await functions.deleteGroup.run(callableRequest(adminUid, { groupId: globalGroupId }));
+    assert.equal((await globalGroup.get()).exists, false);
+});
+
 test('global admin can edit names and switch a user between normal and global admin', async () => {
     const uid = await createUser('Ana');
     await functions.setPlatformUser.run(callableRequest(adminUid, {
