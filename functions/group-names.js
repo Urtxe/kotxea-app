@@ -24,7 +24,7 @@ async function changeName(request, rename) {
         ]);
         const superadmin = role.data()?.role === 'superadmin';
         if (tombstone.exists) throw new HttpsError('permission-denied', 'Kontua ez dago erabilgarri.');
-        if (rename ? !group.exists || !(superadmin || ['owner', 'admin'].includes(member.data()?.role))
+        if (rename ? !group.exists || group.data().status !== 'active' || !(superadmin || ['owner', 'admin'].includes(member.data()?.role))
             : !request.auth.token.email_verified || (superadmin && role.data().canParticipate !== true) || (group.exists && group.data().createdBy !== uid)) {
             throw new HttpsError('permission-denied', 'Ez duzu taldea kudeatzeko baimenik.');
         }

@@ -229,6 +229,66 @@ exports.removeGroupPerson = onCall(functionsConfig, async request => {
     return { success: true };
 });
 
+exports.deleteGroup = onCall({ ...functionsConfig, timeoutSeconds: 540 }, async request => {
+    const actorUid = request.auth?.uid;
+    if (!actorUid) throw new HttpsError('unauthenticated', 'Hasi saioa.');
+    const { groupId } = request.data || {};
+    if (!validUid(groupId) || !/^[\w-]{1,128}$/.test(groupId)) {
+        throw new HttpsError('invalid-argument', 'Berrikusi taldearen identifikatzailea.');
+    }
+    const db = getFirestore();
+    const groupRef = db.collection('groups').doc(groupId);
+    let group;
+    await db.runTransaction(async transaction => {
+        const [groupSnap, member, role, tombstone] = await Promise.all([
+            transaction.get(groupRef),
+            transaction.get(groupRef.collection('members').doc(actorUid)),
+            transaction.get(db.collection('platformRoles').doc(actorUid)),
+            transaction.get(db.collection('deletedAccounts').doc(actorUid))
+        ]);
+        const globalAdmin = role.data()?.role === 'superadmin';
+        if (tombstone.exists || !groupSnap.exists) {
+            throw new HttpsError('not-found', 'Taldea ez da aurkitu.');
+        }
+        const current = groupSnap.data();
+        const authorized = globalAdmin || ['owner', 'admin'].includes(member.data()?.role)
+            || (current.status === 'deleting' && current.deletionRequestedBy === actorUid);
+        if (!authorized) throw new HttpsError('permission-denied', 'Taldearen jabeak, administratzaileek edo administratzaile globalak soilik ezaba dezakete taldea.');
+        if (current.status !== 'deleting') {
+            transaction.update(groupRef, {
+                status: 'deleting', deletionRequestedBy: actorUid,
+                updatedAt: FieldValue.serverTimestamp()
+            });
+        }
+        group = current;
+    });
+
+    const [members, invitations, requests] = await Promise.all([
+        groupRef.collection('members').get(),
+        db.collection('invitations').where('groupId', '==', groupId).get(),
+        db.collection('joinRequests').where('groupId', '==', groupId).get()
+    ]);
+    const externalRefs = [
+        ...members.docs.map(member => db.collection('users').doc(member.id).collection('groups').doc(groupId)),
+        ...invitations.docs.map(doc => doc.ref),
+        ...requests.docs.map(doc => doc.ref),
+        db.collection('directoryGroups').doc(groupId)
+    ];
+    const groupNameKey = group.nameKey;
+    if (groupNameKey) {
+        const claimRef = db.collection('groupNames').doc(groupNameKey);
+        const claim = await claimRef.get();
+        if (claim.exists && claim.data().groupId === groupId) externalRefs.push(claimRef);
+    }
+    for (let offset = 0; offset < externalRefs.length; offset += 400) {
+        const batch = db.batch();
+        externalRefs.slice(offset, offset + 400).forEach(ref => batch.delete(ref));
+        await batch.commit();
+    }
+    await db.recursiveDelete(groupRef);
+    return { success: true };
+});
+
 async function markAccountDeleting(db, actorUid, targetUid) {
     const targetTombstoneRef = db.collection('deletedAccounts').doc(targetUid);
     const actorRoleRef = db.collection('platformRoles').doc(actorUid);
