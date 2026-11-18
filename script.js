@@ -158,15 +158,16 @@
         const result = migrateLegacy(summaryRaw, historyRaw, stateRaw); if (result.state && !validateState(result.state)) return { error: 'Gordetako migrazioaren emaitza ez da baliozkoa.', raw: { stateRaw, summaryRaw, historyRaw } }; return result;
     }
     function addPerson(state, name) { const clean = String(name || '').trim(); if (!clean || clean.length > 80) return { error: 'Izena beharrezkoa da.' }; if (state.people.some(person => person.name.toLocaleLowerCase() === clean.toLocaleLowerCase())) return { error: 'Pertsona hori dagoeneko badago.' }; const person = { id: makeId(), name: clean, active: true, default: false }; state.people.push(person); state.opening[person.id] = emptyOpening(); return { person }; }
+    function renamePerson(state, id, name) { const clean = String(name || '').trim(); if (!clean || clean.length > 80) return { error: 'Izena beharrezkoa da (gehienez 80 karaktere).' }; const person = state.people.find(item => item.id === id); if (!person) return { error: 'Pertsona ez da aurkitu.' }; if (state.people.some(item => item.id !== id && item.name.trim().toLocaleLowerCase() === clean.toLocaleLowerCase())) return { error: 'Pertsona hori dagoeneko badago.' }; person.name = clean; return { person }; }
     function removePerson(state, id) { const person = state.people.find(item => item.id === id); if (!person) return { error: 'Pertsona ez da aurkitu.' }; const opening = state.opening[id] || emptyOpening(); const used = Boolean(person.linkedUid) || state.trips.some(trip => trip.driver === id || trip.passengers.includes(id)) || opening.gidatu > 0 || opening.bidaiak_guztira > 0 || opening.bidaiak_portzentaia > 0 || (opening.balance ?? 0) !== 0; if (used) { person.active = false; return { archived: true }; } state.people = state.people.filter(item => item.id !== id); delete state.opening[id]; return { removed: true }; }
     function restoreDefaults(state) { DEFAULT_PEOPLE.forEach(defaultPerson => { const existing = state.people.find(person => person.id === defaultPerson.id || person.name.trim().toLocaleLowerCase() === defaultPerson.name.toLocaleLowerCase()); if (existing) existing.active = true; else { state.people.push(clone(defaultPerson)); state.opening[defaultPerson.id] = emptyOpening(); } }); }
 
-    const api = { VERSION, STATE_KEY, SUMMARY_KEY, HISTORY_KEY, DEFAULT_PEOPLE, emptyState, validateState, validateImport: validateState, calculateSummary, roundedBalances, suggestDrivers, parseStored, migrateLegacy, addPerson, removePerson, restoreDefaults, todayString, openingBalance, setOpeningBalances, resetTrips };
+    const api = { VERSION, STATE_KEY, SUMMARY_KEY, HISTORY_KEY, DEFAULT_PEOPLE, emptyState, validateState, validateImport: validateState, calculateSummary, roundedBalances, suggestDrivers, parseStored, migrateLegacy, addPerson, renamePerson, removePerson, restoreDefaults, todayString, openingBalance, setOpeningBalances, resetTrips };
     root.KotxeaLogic = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (typeof document === 'undefined') return;
 
-    let state = null; let readOnly = false; let snapshot = null; let storage; let editingTripIds = []; let historyCalendarMonth = new Date();
+    let state = null; let readOnly = false; let snapshot = null; let storage; let editingTripIds = []; let editingPersonId = null; let historyCalendarMonth = new Date();
     try { storage = root.localStorage; } catch (_) { storage = null; }
     function el(id) { return document.getElementById(id); }
     function canManageGroup() { return Boolean(root.KotxeaCloud && root.KotxeaCloud.canManageGroup()); }
@@ -290,7 +291,18 @@
             button.setAttribute('aria-label', person.name + ': ' + button.textContent);
             button.dataset.personId = person.id;
             button.addEventListener('click', togglePerson);
-            member.append(memberHeading, button);
+            const actions = document.createElement('div');
+            actions.className = 'person-actions';
+            const editButton = document.createElement('button');
+            editButton.type = 'button';
+            editButton.className = 'secondary-button';
+            editButton.textContent = 'Izena aldatu';
+            editButton.hidden = !canManageGroup();
+            editButton.setAttribute('aria-label', person.name + ': izena aldatu');
+            editButton.dataset.personId = person.id;
+            editButton.addEventListener('click', openPersonEditor);
+            actions.append(editButton, button);
+            member.append(memberHeading, actions);
             group.append(member);
         });
         if (state.people.some(person => person.removed) && roundedValues.__removed !== 0) {
@@ -329,8 +341,9 @@
         const select = el('historyPerson');
         const selected = select.value;
         select.replaceChildren(new Option('Pertsona guztiak', ''));
-        state.people.forEach(person => select.add(new Option(person.name + (person.active ? '' : ' (artxibatua)'), person.id)));
-        if (state.people.some(person => person.id === selected)) select.value = selected;
+        const activePeople = state.people.filter(person => person.active && !person.removed);
+        activePeople.forEach(person => select.add(new Option(person.name, person.id)));
+        if (activePeople.some(person => person.id === selected)) select.value = selected;
     }
     function renderHistory() {
         const body = el('historialaBody');
@@ -506,6 +519,30 @@
         updateDriverCheckbox(true);
     }
     async function togglePerson(event) { if (readOnly || !canManageGroup()) return; const button = event.currentTarget; button.disabled = true; try { await root.KotxeaCloud.removeGroupPerson(button.dataset.personId); } finally { button.disabled = false; } }
+    function openPersonEditor(event) {
+        if (readOnly || !canManageGroup()) return;
+        editingPersonId = event.currentTarget.dataset.personId;
+        const person = state.people.find(item => item.id === editingPersonId);
+        if (!person) return;
+        el('editPersonTitle').textContent = 'Pertsonaren izena aldatu';
+        el('editPersonName').value = person.name;
+        el('editPersonFeedback').textContent = '';
+        el('editPersonDialog').showModal();
+        el('editPersonName').focus();
+        el('editPersonName').select();
+    }
+    async function savePersonName(event) {
+        event.preventDefault();
+        if (readOnly || !canManageGroup() || !editingPersonId) return;
+        const next = clone(state);
+        const result = renamePerson(next, editingPersonId, el('editPersonName').value);
+        if (result.error) { el('editPersonFeedback').textContent = result.error; el('editPersonName').focus(); return; }
+        el('savePersonNameButton').disabled = true;
+        const saved = await persist(next);
+        el('savePersonNameButton').disabled = false;
+        if (saved) { editingPersonId = null; el('editPersonDialog').close(); }
+        else el('editPersonFeedback').textContent = 'Ezin izan da izena gorde. Egiaztatu konexioa eta saiatu berriro.';
+    }
     let tripSavedTimer;
     function showTripSaved(pending = false) {
         const dialog = el('tripSavedDialog');
@@ -607,6 +644,7 @@
         el('bidaiariakZerrenda').addEventListener('change', renderDriverSuggestion);
         el('bidaiForm').addEventListener('submit', submitTrip);
         el('openingForm').addEventListener('submit', saveOpeningBalances);
+        el('editPersonForm').addEventListener('submit', savePersonName);
         el('cancelEditBtn').addEventListener('click', resetTripForm);
     }
     function setup() {

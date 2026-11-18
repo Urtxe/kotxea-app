@@ -14,7 +14,7 @@
             if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
         } catch (_) {}
     </script>
-    <link rel="stylesheet" href="styles.css?v=23">
+    <link rel="stylesheet" href="styles.css?v=24">
 </head>
 <body>
     <div class="app-shell">
@@ -295,6 +295,14 @@
         <p id="installDialogText"></p>
         <div class="dialog-actions"><button type="button" id="installConfirmBtn" hidden>Instalatu</button><form method="dialog"><button class="secondary-button">Orain ez</button></form></div>
     </dialog>
+    <dialog id="editPersonDialog" class="save-dialog user-admin-dialog" aria-labelledby="editPersonTitle">
+        <header class="user-admin-dialog-heading"><h2 id="editPersonTitle">Pertsonaren izena aldatu</h2><p class="help">Aldaketak taldeko bidaietan eta balantzean mantenduko dira.</p></header>
+        <form id="editPersonForm" class="gate-form">
+            <div class="field"><label for="editPersonName">Taldeko izena</label><input id="editPersonName" maxlength="80" autocomplete="off" required></div>
+            <p id="editPersonFeedback" class="help" role="status"></p>
+            <div class="dialog-actions"><button type="submit" id="savePersonNameButton">Gorde</button><button type="button" class="secondary-button" data-close-dialog="editPersonDialog">Utzi</button></div>
+        </form>
+    </dialog>
     <dialog id="editPlatformUserDialog" class="save-dialog user-admin-dialog" aria-labelledby="editPlatformUserTitle">
         <header class="user-admin-dialog-heading"><span class="dialog-kicker">GESTIÓN DE CUENTA</span><h2 id="editPlatformUserTitle">Editar usuario</h2><p id="editPlatformUserEmail" class="help"></p></header>
         <form id="editPlatformUserForm" class="gate-form">
@@ -319,7 +327,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
     <script src="./firebase-config.js"></script>
-    <script src="./script.js?v=18"></script>
-    <script src="./cloud.js?v=23"></script>
+    <script src="./script.js?v=19"></script>
+    <script src="./cloud.js?v=24"></script>
 </body>
 </html>
