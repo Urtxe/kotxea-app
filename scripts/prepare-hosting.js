@@ -12,7 +12,7 @@ fs.mkdirSync(path.join(publicDir, 'assets'), { recursive: true });
 for (const file of files) {
     fs.copyFileSync(path.join(root, file), path.join(publicDir, file));
 }
-for (const icon of ['kotxea-icon-192.png', 'kotxea-icon-512.png']) {
+for (const icon of ['kotxea-icon-180.png', 'kotxea-icon-192.png', 'kotxea-icon-512.png']) {
     fs.copyFileSync(
         path.join(root, 'assets', icon),
         path.join(publicDir, 'assets', icon)
