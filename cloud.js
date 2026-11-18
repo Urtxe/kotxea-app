@@ -105,6 +105,7 @@
     function authActionSettings() { return { url: root.location.href, handleCodeInApp: false }; }
     function groupReference(groupId) { return db.collection('groups').doc(groupId); }
     function safeDocId(id) { return encodeURIComponent(String(id)); }
+    function normalizedDisplayName(value) { return String(value || '').trim().replace(/\s+/g, ' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase(); }
     function tripAuthorName(trip, state) {
         const linkedPerson = state.people.find(person => person.linkedUid === user.uid);
         return linkedPerson ? linkedPerson.name : null;
@@ -809,7 +810,10 @@
             members.forEach(doc => {
                 const member = doc.data(); const row = document.createElement('li'); row.className = 'group-picker-item';
                 const person = peopleById.get(member.personId);
-                const label = document.createElement('span'); label.textContent = (member.displayName || member.email) + (person ? ' · ' + person.name : ' · bidaiatzen ez duen administratzailea');
+                const accountName = member.displayName || member.email;
+                const label = document.createElement('span'); label.textContent = person
+                    ? (normalizedDisplayName(accountName) === normalizedDisplayName(person.name) ? accountName : accountName + ' · ' + person.name)
+                    : accountName + ' · bidaiatzen ez duen administratzailea';
                 const role = document.createElement('span'); role.textContent = member.role === 'owner' ? 'Jabea' : member.role === 'admin' ? 'Taldeko admin' : 'Kidea';
                 row.append(label, role);
                 if (member.uid !== user.uid && member.role !== 'owner' && canManageGroup()) {
