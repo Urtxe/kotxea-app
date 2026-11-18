@@ -1491,7 +1491,10 @@
         if (!standalone) el('installAppBtn').hidden = false;
         root.addEventListener('appinstalled', () => { el('installAppBtn').hidden = true; el('installHelp').hidden = true; });
         if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-            navigator.serviceWorker.register('./service-worker.js', { scope: './' }).catch(error => console.warn('Kotxea service worker unavailable:', error));
+            navigator.serviceWorker.register('./service-worker.js', { scope: './', updateViaCache: 'none' }).then(registration => {
+                registration.update().catch(error => console.warn('Kotxea service worker update check failed:', error));
+                root.addEventListener('pageshow', () => registration.update().catch(error => console.warn('Kotxea service worker update check failed:', error)));
+            }).catch(error => console.warn('Kotxea service worker unavailable:', error));
         }
     }
 
