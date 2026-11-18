@@ -167,10 +167,16 @@
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (typeof document === 'undefined') return;
 
-    let state = null; let readOnly = false; let snapshot = null; let storage; let editingTripIds = []; let editingPersonId = null; let historyCalendarMonth = new Date();
+    let state = null; let readOnly = false; let snapshot = null; let storage; let editingTripIds = []; let personEditor = null; let historyCalendarMonth = new Date();
     try { storage = root.localStorage; } catch (_) { storage = null; }
     function el(id) { return document.getElementById(id); }
     function canManageGroup() { return Boolean(root.KotxeaCloud && root.KotxeaCloud.canManageGroup()); }
+    function canEditPersonName(person) {
+        if (readOnly || !person || person.removed) return false;
+        const cloud = root.KotxeaCloud;
+        const uid = cloud?.currentUser()?.uid;
+        return canManageGroup() || Boolean(person.active && uid && person.linkedUid === uid && cloud.currentMember()?.personId === person.id);
+    }
     function canModifyTrip(trip) { return canManageGroup() || Boolean(trip && trip.createdBy && trip.createdBy === root.KotxeaCloud?.currentUser()?.uid); }
     function showScreen(name) {
         document.querySelectorAll('[data-screen]').forEach(screen => {
@@ -297,7 +303,7 @@
             editButton.type = 'button';
             editButton.className = 'secondary-button';
             editButton.textContent = 'Izena aldatu';
-            editButton.hidden = !canManageGroup();
+            editButton.hidden = !canEditPersonName(person);
             editButton.setAttribute('aria-label', person.name + ': izena aldatu');
             editButton.dataset.personId = person.id;
             editButton.addEventListener('click', openPersonEditor);
@@ -520,11 +526,9 @@
     }
     async function togglePerson(event) { if (readOnly || !canManageGroup()) return; const button = event.currentTarget; button.disabled = true; try { await root.KotxeaCloud.removeGroupPerson(button.dataset.personId); } finally { button.disabled = false; } }
     function openPersonEditor(event) {
-        if (readOnly || !canManageGroup()) return;
-        editingPersonId = event.currentTarget.dataset.personId;
-        const person = state.people.find(item => item.id === editingPersonId);
-        if (!person) return;
-        el('editPersonTitle').textContent = 'Pertsonaren izena aldatu';
+        const person = state?.people.find(item => item.id === event.currentTarget.dataset.personId);
+        if (!canEditPersonName(person)) return;
+        personEditor = { personId: person.id, groupId: root.KotxeaCloud.currentGroup().id };
         el('editPersonName').value = person.name;
         el('editPersonFeedback').textContent = '';
         el('editPersonDialog').showModal();
@@ -533,15 +537,24 @@
     }
     async function savePersonName(event) {
         event.preventDefault();
-        if (readOnly || !canManageGroup() || !editingPersonId) return;
+        const editor = personEditor;
+        const submit = el('savePersonNameButton');
+        if (!editor || submit.disabled) return;
+        const person = state?.people.find(item => item.id === editor.personId);
+        if (editor.groupId !== root.KotxeaCloud.currentGroup()?.id || !canEditPersonName(person)) {
+            el('editPersonDialog').close();
+            return;
+        }
         const next = clone(state);
-        const result = renamePerson(next, editingPersonId, el('editPersonName').value);
+        const result = renamePerson(next, editor.personId, el('editPersonName').value);
         if (result.error) { el('editPersonFeedback').textContent = result.error; el('editPersonName').focus(); return; }
-        el('savePersonNameButton').disabled = true;
-        const saved = await persist(next);
-        el('savePersonNameButton').disabled = false;
-        if (saved) { editingPersonId = null; el('editPersonDialog').close(); }
-        else el('editPersonFeedback').textContent = 'Ezin izan da izena gorde. Egiaztatu konexioa eta saiatu berriro.';
+        submit.disabled = true;
+        try {
+            const saved = result.person.name === person.name || await persist(next);
+            if (personEditor !== editor) return;
+            if (saved) el('editPersonDialog').close();
+            else el('editPersonFeedback').textContent = 'Ezin izan da izena gorde. Saiatu berriro.';
+        } finally { submit.disabled = false; }
     }
     let tripSavedTimer;
     function showTripSaved(pending = false) {
@@ -645,6 +658,7 @@
         el('bidaiForm').addEventListener('submit', submitTrip);
         el('openingForm').addEventListener('submit', saveOpeningBalances);
         el('editPersonForm').addEventListener('submit', savePersonName);
+        el('editPersonDialog').addEventListener('close', () => { personEditor = null; });
         el('cancelEditBtn').addEventListener('click', resetTripForm);
     }
     function setup() {

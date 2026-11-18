@@ -713,7 +713,10 @@
                 for (const [id, person] of newPeople) {
                     const old = oldPeople.get(id);
                     const opening = next.opening[id] || { gidatu: 0, bidaiak_guztira: 0, bidaiak_portzentaia: 0 };
-                    if (!old || comparable({ ...old, linkedUid: undefined }) !== comparable({ ...person, linkedUid: undefined }) || comparable(previous.opening[id]) !== comparable(opening)) {
+                    const sameOpening = old && comparable(previous.opening[id]) === comparable(opening);
+                    if (sameOpening && old.name !== person.name && comparable({ ...old, name: person.name }) === comparable(person)) {
+                        transaction.update(groupRef.collection('people').doc(safeDocId(id)), { name: person.name });
+                    } else if (!old || comparable({ ...old, linkedUid: undefined }) !== comparable({ ...person, linkedUid: undefined }) || !sameOpening) {
                         const doc = personDocument(person, opening);
                         if (old && old.linkedUid) doc.linkedUid = old.linkedUid;
                         transaction.set(groupRef.collection('people').doc(safeDocId(id)), doc, { merge: true });
@@ -960,9 +963,11 @@
         if (!activeGroup || !canManageGroup() || uid === user.uid) return;
         const role = makeAdmin ? 'admin' : 'member';
         try {
+            const groupRef = groupReference(activeGroup.id);
             const batch = db.batch();
-            batch.update(groupReference(activeGroup.id).collection('members').doc(uid), { role });
+            batch.update(groupRef.collection('members').doc(uid), { role });
             batch.set(db.collection('users').doc(uid).collection('groups').doc(activeGroup.id), { role }, { merge: true });
+            batch.update(groupRef, { revision: firebase.firestore.FieldValue.increment(1), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
             await batch.commit();
             await loadGroupManagement();
         } catch (error) { showStatus('Ezin izan da taldeko rola aldatu: ' + safeError(error)); }

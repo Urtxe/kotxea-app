@@ -1,13 +1,13 @@
-const CACHE_NAME = 'kotxea-shell-v33';
+const CACHE_NAME = 'kotxea-shell-v34';
 const SHELL_FILES = [
     './',
     './index.html',
     './styles.css',
     './styles.css?v=25',
     './script.js',
-    './script.js?v=19',
+    './script.js?v=20',
     './cloud.js',
-    './cloud.js?v=25',
+    './cloud.js?v=26',
     './firebase-config.js',
     './manifest.json',
     './assets/kotxea-icon-180.png',
@@ -44,9 +44,11 @@ self.addEventListener('fetch', event => {
     }
 
     if (request.mode === 'navigate') {
-        event.respondWith(fetch(request).then(response => {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put('./index.html', copy));
+        event.respondWith(fetch(request, { cache: 'no-cache' }).then(response => {
+            if (response.ok) {
+                const copy = response.clone();
+                event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.put('./index.html', copy)));
+            }
             return response;
         }).catch(() => caches.match('./index.html')));
         return;

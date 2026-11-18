@@ -201,6 +201,14 @@ service cloud.firestore {
             && getAfter(memberPath(groupId, request.resource.data.linkedUid)).data.uid == request.resource.data.linkedUid));
         allow update: if ((isGroupAdmin(groupId) && validGroupState(groupId))
             || (verified() && groupIsActive(groupId)
+              && resource.data.active == true
+              && resource.data.get('removed', false) == false
+              && resource.data.get('linkedUid', null) == request.auth.uid
+              && isMember(groupId)
+              && get(memberPath(groupId, request.auth.uid)).data.personId == resource.data.id
+              && request.resource.data.name.size() <= 80
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']))
+            || (verified() && groupIsActive(groupId)
               && getAfter(memberPath(groupId, request.auth.uid)).data.uid == request.auth.uid
               && getAfter(memberPath(groupId, request.auth.uid)).data.personId == request.resource.data.id
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linkedUid'])))
