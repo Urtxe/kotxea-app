@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kotxea-shell-v29';
+const CACHE_NAME = 'kotxea-shell-v30';
 const SHELL_FILES = [
     './',
     './index.html',
@@ -10,7 +10,8 @@ const SHELL_FILES = [
     './cloud.js?v=23',
     './firebase-config.js',
     './manifest.json',
-    './assets/kotxea-icon.svg'
+    './assets/kotxea-icon-192.png',
+    './assets/kotxea-icon-512.png'
 ];
 
 self.addEventListener('install', event => {
