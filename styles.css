@@ -49,7 +49,7 @@ body { min-height: 100vh; margin: 0; color: var(--texto); background: radial-gra
 .app-shell { display: flex; flex-direction: column; width: min(100%, 960px); min-height: 100vh; margin: auto; background: radial-gradient(ellipse at 100% 0, rgba(193, 0, 114, .1), transparent 45%), var(--superficie); border: 1px solid var(--borde); box-shadow: 0 32px 80px rgba(0, 0, 0, .24); }
 :root[data-theme="light"] .app-shell { box-shadow: 0 24px 70px rgba(32, 48, 73, .1); }
 .app-header { display: flex; align-items: center; gap: 12px; min-height: 96px; padding: 20px; color: var(--blanco); background: radial-gradient(ellipse at 85% 0, #e12a98, transparent 65%), linear-gradient(135deg, #c10072, #70094d); border-bottom: 1px solid #ed63b4; border-radius: 0 0 24px 24px; box-shadow: 0 8px 32px rgba(193, 0, 114, .18), inset 0 1px 0 rgba(255, 255, 255, .25); }
-.brand-mark { display: grid; flex-shrink: 0; width: 44px; height: 44px; place-items: center; border-radius: 14px; background: linear-gradient(145deg, #b7ef73, var(--verde-laboral)); box-shadow: 0 5px 0 #3f6917, 0 10px 24px rgba(123, 190, 49, .28), inset 0 1px 0 #dcffb9; transform: rotate(-6deg); color: #21320c; font-size: 1.45rem; font-weight: 800; }
+.brand-mark { display: block; flex-shrink: 0; width: 56px; height: 56px; border-radius: 16px; object-fit: cover; }
 .app-header h1, .screen-heading h2 { margin: 0; letter-spacing: -.03em; }
 .app-header h1 { font-size: 1.6rem; }
 .eyebrow { margin: 0 0 4px; font-size: .65rem; font-weight: 700; letter-spacing: .16em; }

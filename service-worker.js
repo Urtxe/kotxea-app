@@ -1,15 +1,16 @@
-const CACHE_NAME = 'kotxea-shell-v30';
+const CACHE_NAME = 'kotxea-shell-v31';
 const SHELL_FILES = [
     './',
     './index.html',
     './styles.css',
-    './styles.css?v=22',
+    './styles.css?v=23',
     './script.js',
     './script.js?v=18',
     './cloud.js',
     './cloud.js?v=23',
     './firebase-config.js',
     './manifest.json',
+    './assets/kotxea-icon-180.png',
     './assets/kotxea-icon-192.png',
     './assets/kotxea-icon-512.png'
 ];
