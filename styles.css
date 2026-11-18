@@ -264,6 +264,9 @@ footer a { color: var(--acento); font-weight: bold; text-underline-offset: 3px; 
     .theme-toggle { order: 8; }
     .group-picker-item { grid-template-columns: minmax(0, 1fr); }
     .group-picker-item > button { justify-self: stretch; }
+    .group-list li { align-items: stretch; flex-direction: column; }
+    .group-list .person-actions { justify-content: flex-start; }
+    .group-list .person-actions button { flex: 1 1 auto; }
     .balance-card { grid-template-columns: minmax(0, 1fr) minmax(0, .9fr); padding: 14px; }
     .balance-value { font-size: 1.7rem; }
     /* Keep table semantics while stacking labelled cells for narrow screens. */
