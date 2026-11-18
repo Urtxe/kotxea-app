@@ -36,6 +36,34 @@ async function seedAccount(uid, role, extra = {}) {
     });
 }
 
+test('a verified group member can change only the name of their own active traveller', async () => {
+    const uid = 'traveller';
+    await testEnv.withSecurityRulesDisabled(async context => {
+        const db = context.firestore();
+        await setDoc(doc(db, 'groups/group-1'), { name: 'Kotxea', ownerUid: 'owner', createdBy: 'owner', status: 'active', revision: 0 });
+        await setDoc(doc(db, 'groups/group-1/members', uid), { uid, role: 'member', personId: 'person-1' });
+        await setDoc(doc(db, 'groups/group-1/people/person-1'), { id: 'person-1', name: 'Ane', linkedUid: uid, active: true, createdBy: 'owner' });
+        await setDoc(doc(db, 'groups/group-1/people/person-2'), { id: 'person-2', name: 'Jon', linkedUid: 'other', active: true });
+    });
+
+    const db = testEnv.authenticatedContext(uid, { email_verified: true }).firestore();
+    const own = doc(db, 'groups/group-1/people/person-1');
+    const rename = writeBatch(db);
+    rename.update(own, { name: 'Ane García' });
+    rename.update(doc(db, 'groups/group-1'), { revision: increment(1), updatedAt: serverTimestamp() });
+    await assertSucceeds(rename.commit());
+    assert.equal((await getDoc(own)).data().createdBy, 'owner');
+    await assertFails(updateDoc(own, { name: 'Ane', active: false }));
+    await assertFails(updateDoc(own, { name: 'Ane', linkedUid: 'other' }));
+    await assertFails(updateDoc(own, { name: '' }));
+    await assertFails(updateDoc(own, { name: 'x'.repeat(81) }));
+    await assertFails(updateDoc(doc(db, 'groups/group-1/people/person-2'), { name: 'Bestea' }));
+    await testEnv.withSecurityRulesDisabled(async context => {
+        await updateDoc(doc(context.firestore(), own.path), { active: false });
+    });
+    await assertFails(updateDoc(own, { name: 'Ane' }));
+});
+
 async function createGroupBatch(db, uid) {
     await testEnv.withSecurityRulesDisabled(async context => {
         await setDoc(doc(context.firestore(), 'groupNames/kotxea'), { groupId: 'group-1', uid, name: 'Kotxea' });
